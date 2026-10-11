@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     "drizzle/**",
     "data/**",
     ".output/**",
+    "dist/**",
   ]),
 ]);
 

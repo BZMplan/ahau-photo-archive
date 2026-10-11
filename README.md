@@ -2,13 +2,13 @@
 
 轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿和管理员审核。
 
-当前完成**第七阶段：Docker 容器化部署与生产环境配置**。公开浏览、匿名投稿和管理员审核闭环保留；部署使用单实例 Next.js standalone、Docker Compose、持久化 SQLite、显式迁移与一致性备份。正式代理、R2 权限和浏览器验收仍由部署者在目标环境完成。完整操作见 [部署指南](docs/deployment.md)，公开影像设计见 [公开影像指南](docs/gallery.md)。
+当前支持两种并列的单实例生产部署：**[Docker Compose](docs/deployment.md)** 和 **[原生 Node.js Standalone + systemd](docs/deployment-native.md)**。两种方式共用持久化 SQLite、Drizzle Migration、图片服务、显式迁移与在线备份；原生方式运行网站无需 Docker 或 pnpm。正式代理、R2 权限和浏览器验收仍由部署者在目标环境完成。公开影像设计见 [公开影像指南](docs/gallery.md)。
 
 第五阶段审核发布能力继续保留。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
 ## 技术栈
 
-TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；使用 Docker Compose 单实例部署，由外部 HTTP/HTTPS 反向代理提供公网入口。
+TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；生产可用 Docker Compose 或原生 Node.js + systemd 单实例部署，由外部 HTTP/HTTPS 反向代理提供公网入口。
 
 精确版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 由 `packageManager` 固定。`pnpm-workspace.yaml` 仅配置依赖构建许可，本项目不是 Monorepo。
 
@@ -99,9 +99,10 @@ pnpm test:images
 | `pnpm test`                            | 临时 SQLite 的业务、认证、安全与迁移测试                          |
 | `pnpm check`                           | 类型、Lint、格式与集成测试                                        |
 | `pnpm build` / `pnpm start`            | standalone 生产构建 / 本地生产服务                                |
+| `pnpm build:native`                    | 编译迁移、构建并打包原生发行目录 `dist/native/`                   |
 | `pnpm test:auth-flow`                  | 先 build，再自动启动临时数据库生产服务做 HTTP 流程验证            |
 | `pnpm db:generate` / `pnpm db:migrate` | 生成 / 应用 Drizzle Migration                                     |
-| `pnpm db:studio` / `pnpm db:compile`   | 本地数据库工具 / 编译 Docker 迁移脚本                             |
+| `pnpm db:studio` / `pnpm db:compile`   | 本地数据库工具 / 编译两种部署共用的迁移脚本                       |
 | `pnpm auth:secret` / `pnpm admin:init` | 生成认证密钥 / 安全初始化首个管理员                               |
 | `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
 | `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
@@ -140,6 +141,13 @@ docs/                           # 中文架构、路线图、验证记录
 data/                           # 持久化数据，不提交
 ```
 
+## 生产部署
+
+- [Docker Compose 部署](docs/deployment.md)：镜像内运行 Standalone，SQLite 和可选本地图片放持久卷。
+- [原生 Node.js + systemd 部署](docs/deployment-native.md)：在兼容 Linux 环境构建 `dist/native/`，服务由 systemd 管理，数据库和图片放持久目录。
+
+两种方式使用同一套业务代码、Migration、运行时变量、SQLite Backup API 和恢复脚本；均需用户自行管理外部 HTTPS 反向代理。原生构建必须匹配 Linux 架构、Node 与 libc，macOS 构建产物不能直接部署到 Linux。生产运行不需要 Cloudflare Tunnel。
+
 ## Docker Compose 部署
 
 ```bash
@@ -153,7 +161,7 @@ docker compose --env-file .env.production up -d --wait app
 docker compose --env-file .env.production ps
 ```
 
-可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key；投稿页按请求读取公开 Site Key，同一镜像可用于不同域名。应用容器非 root，启动前只读核对 Migration，然后执行 `node server.js`；迁移和首个管理员初始化是独立命令，失败时不启动新版本。SQLite 数据库在 `archive-data` 命名卷，备份在独立的 `archive-backups` 卷，默认端口绑定 `127.0.0.1:3000`。`admin-init` 仅是按需运行的可信 TTY 容器，不作为长期服务。
+该方式可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key；投稿页按请求读取公开 Site Key，同一镜像可用于不同域名。应用容器非 root，启动前只读核对 Migration，然后执行 `node server.js`；迁移和首个管理员初始化是独立命令，失败时不启动新版本。SQLite 数据库在 `archive-data` 命名卷，备份在独立的 `archive-backups` 卷，默认端口绑定 `127.0.0.1:3000`。`admin-init` 仅是按需运行的可信 TTY 容器，不作为长期服务。
 
 公网访问由用户自行选择和配置的外部 HTTP/HTTPS 反向代理提供；本项目不管理代理或 TLS 证书。代理终止 HTTPS，通过 HTTP 转发到容器，并限制对应用端口的直接访问。将 `BETTER_AUTH_URL` 设置为真实公开 HTTPS origin；这也是 Next.js 公开页面 URL 与 Turnstile hostname 校验的来源，浏览器在此 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / `X-Forwarded-*` 推断认证域名；仅在入口不可绕过、代理剥离并重写来源头后才配置 `TRUSTED_PROXY_IP_HEADER`。代理需设置与 52 MiB 投稿请求上限兼容的请求体限制和适合图片处理的 HTTP 超时；具体配置由代理维护者负责。无需 Cloudflare Tunnel 或 Zero Trust。
 

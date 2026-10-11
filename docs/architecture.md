@@ -160,7 +160,7 @@ Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流�
 
 ## 部署
 
-生产镜像为多阶段 Debian slim / Node.js 24 构建，使用 Next.js standalone，非 root、单实例、健康检查。Compose 将 SQLite 主文件、WAL、SHM 与可选 local 图片放在 `/app/data` 持久卷，备份放独立卷；认证与 R2 密钥只在运行时传入。Migration 由一次性命令显式执行，启动前只读核对已应用版本，再执行 `node server.js`；应用重启不自动迁移或重建数据库。备份使用 SQLite Backup API，恢复须停应用并显式确认；镜像回滚不等于 Schema 回滚。不支持多副本共享 SQLite。详见 [部署指南](deployment.md)。
+生产支持 Docker Compose 与原生 Linux systemd 两种单实例方式，均运行同一个 Next.js standalone `node server.js`，共用业务服务、Drizzle SQL、运行时环境变量和 SQLite Backup API。Docker 镜像使用多阶段 Debian slim / Node.js 24；Compose 将 SQLite 主文件、WAL、SHM 与可选 local 图片放在 `/app/data` 持久卷，备份放独立卷。原生方式把代码按版本放在 `/opt/ahau-photo-archive/releases`，数据放在 `/var/lib/ahau-photo-archive`，备份放在 `/var/backups/ahau-photo-archive`，由低权限 systemd 服务监听回环地址。两种方式认证与 R2 密钥只在运行时传入。Migration 由一次性命令显式执行，启动前只读核对已应用版本，再执行 `node server.js`；应用重启不自动迁移或重建数据库。恢复须停应用并显式确认；镜像或 symlink 回滚都不等于 Schema 回滚。不支持多副本共享 SQLite。详见 [Docker 指南](deployment.md)与[原生指南](deployment-native.md)。
 
 `BETTER_AUTH_URL` 配置为浏览器实际访问的固定 HTTPS origin，不从请求的 Host 或转发头动态生成；它同时供 Better Auth 的 `baseURL` / 精确 `trustedOrigins`、Turnstile 生产 hostname 校验，以及 Next.js 的公开 metadata、sitemap 和 robots URL 使用。HTTPS 在外部代理终止，代理以 HTTP 请求应用；Better Auth 仍根据公开 HTTPS URL 设置 Secure、HttpOnly、SameSite=Lax、host-only Cookie。生产 Turnstile Widget 须绑定同一公开域名，并在 Siteverify 校验 hostname 和 action。投稿页面动态读取运行时 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 并作为公开 prop 传给客户端；Secret Key 仍只在服务端运行时读取，同一镜像可用于不同公开域名。代理需限制允许的 Host，应用继续精确校验 Origin、拒绝跨域管理员写请求，不关闭 CSRF/Origin 校验来适配代理。
 

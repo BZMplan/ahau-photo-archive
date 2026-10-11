@@ -1,0 +1,30 @@
+[Unit]
+Description=Ahau Photo Archive (Next.js standalone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ahau-archive
+Group=ahau-archive
+WorkingDirectory=/opt/ahau-photo-archive/current
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+EnvironmentFile=/etc/ahau-photo-archive/app.env
+ExecStartPre=/usr/bin/node /opt/ahau-photo-archive/current/migrations/scripts/check-migrations.mjs
+ExecStart=/usr/bin/node /opt/ahau-photo-archive/current/server.js
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

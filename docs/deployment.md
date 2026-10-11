@@ -1,5 +1,7 @@
 # Docker Compose 生产部署
 
+这是方案 A。无 Docker 的普通 Linux 服务器可使用[原生 Node.js Standalone + systemd 部署](deployment-native.md)。两种方式共用 Drizzle Migration、运行时变量语义、图片服务、SQLite 在线备份和恢复脚本。
+
 本项目以单个 Next.js standalone 容器运行，SQLite 数据位于 `archive-data` 卷，数据库备份位于独立的 `archive-backups` 卷。生产照片推荐存 Cloudflare R2；显式选择 `local` 时，原图和衍生图也在 `archive-data` 的 `/app/data/storage`，必须一并保护。外部反向代理负责 HTTPS；本项目只提供 HTTP，不配置代理或证书。
 
 ## 环境与配置

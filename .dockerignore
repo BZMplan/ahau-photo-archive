@@ -1,6 +1,7 @@
 .git
 .next
 .output
+dist
 node_modules
 data
 backups

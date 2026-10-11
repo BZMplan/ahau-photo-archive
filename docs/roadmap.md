@@ -1,5 +1,13 @@
 # 开发路线图
 
+## 生产部署方式（已扩展）
+
+- [x] Docker Compose：持久卷、显式 Migration、在线备份/恢复和健康检查
+- [x] 原生 Linux：Standalone 打包、同一 Migration/备份/恢复脚本、systemd 服务模板与版本目录更新流程
+- [ ] 目标 Linux 主机上的 systemd、外部 HTTPS 代理、真实 R2/Turnstile 与浏览器验收，由部署者执行
+
+两种部署方式共用应用及安全边界；分别见 [Docker 部署](deployment.md)和[原生部署](deployment-native.md)。
+
 ## 第一阶段：可靠基础（已完成）
 
 - [x] Git、pnpm、Next.js、TypeScript、Tailwind、shadcn/ui、Lint/Prettier

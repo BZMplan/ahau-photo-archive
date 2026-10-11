@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:native": "pnpm db:compile && pnpm build && node scripts/package-native.mjs",
     "start": "node scripts/start.mjs",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
