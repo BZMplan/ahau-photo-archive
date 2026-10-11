@@ -125,7 +125,7 @@ R2_PUBLIC_BASE_URL=https://images.example.com
 6. URL 为 HTTPS origin，无路径、凭据、query/hash，桶名不同。local 忽略空 R2 配置；生产 driver 未设默认要求 r2，缺项明确退出，绝不静默回退；显式 local 可用于本地生产测试或自托管持久化。
 7. 维护者主动执行 `pnpm storage:check --allow-r2` 检查两个 HeadBucket。不会创建公开对象，不验证公开写权限、私有匿名策略或 CDN，这些需控制台与后续授权实测。未带参数拒绝 R2 探测。**本次开发未执行真实云检查。**
 
-Compose 只在运行时传入 driver、密钥、桶名和域名；local 在持久卷 /app/data/storage。使用 `docker compose --env-file .env.local ...`，构建不需凭据，运行需迁移/配置。不要删除卷或把存储移入 static/public。
+Compose 只在运行时传入 driver、密钥、桶名和域名；local 在持久卷 `/app/data/storage`。生产使用 `.env.production.example` 复制出的本地 `.env.production`，按 [部署指南](deployment.md) 显式迁移后启动；构建不需凭据。不要删除卷或把存储移入 static/public。
 
 修改驱动/桶/目录配置后重启应用；存储实例在进程内复用。切换驱动不会自动复制旧对象，需要独立迁移与校验 Key/字节后切换，不能盲切。未来重生成已公开图片时，先业务隐藏、撤回并处理 CDN 缓存，再生成/发布；hash 冲突不会原位覆盖旧公开资源。
 

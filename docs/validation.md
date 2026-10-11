@@ -1,6 +1,19 @@
 # 历次验证记录
 
-文档前半部分保留各阶段的历史结果；当前第五阶段的最新结果见文末“第五阶段：审核与发布闭环”。早期条目中的 501 仅表示当时功能尚未开放，不代表当前投稿或审核接口行为。
+文档保留各阶段的历史结果；当前第七阶段的结果如下。早期条目中的 501 仅表示当时功能尚未开放，不代表当前投稿或审核接口行为。
+
+## 第七阶段：Docker 容器化部署与生产环境配置
+
+验证日期：2026-10-11。使用独立 Compose 项目、隔离的 SQLite / 备份命名卷、LocalStorage 和非真实 Turnstile 测试值；没有接触开发或生产数据库、真实照片、Cloudflare R2/CDN 或正式反向代理。宿主机为 macOS arm64，镜像为 Node.js 24 Debian slim Linux arm64。
+
+- `pnpm check`：TypeScript、Prettier、22 项 Node 测试、99 项 Vitest 通过；ESLint 0 错误，后台既有 5 条 `<img>` 警告。
+- `pnpm build`、`pnpm db:compile`、`pnpm db:generate`：通过，无新 Schema 差异。`pnpm test:auth-flow`：9 项真实 standalone HTTP 回归通过。
+- `docker compose config`、`docker compose build app admin-init`：通过。默认仅 `app` 长期运行，映射 `127.0.0.1`，无 privileged 或 Docker Socket。Runner 镜像未发现 `.env`、SQLite、上传、测试目录，`/app/data` 和 `/app/backups` 属于 UID 1000。
+- 容器显式 Migration 首次和重复执行通过，启动门槛拒绝未迁移数据库，已迁移应用为 healthy。Linux Runner 内 `better-sqlite3`、Sharp 均可加载；首页、档案、投稿页、健康接口可访问。投稿页显示运行时 Site Key；匿名管理员 API 返回 401，错误 Origin 投稿返回 403。
+- 向隔离数据库和 local 存储写入探针，容器 restart 和 force-recreate 后均保留。容器在线备份成功，新备份为无 WAL/SHM 附属文件的单个 SQLite 文件；停止应用后恢复备份，并核对探针数据回到恢复点；备份/恢复临时库测试也通过。
+- 临时 `admin-init` 容器在可信 TTY 中调用官方 CLI 创建了**仅在隔离测试卷中的测试管理员**，无默认密码；再次初始化正确拒绝。Runner 对官方 Turnstile 测试 Secret Key 拒绝启动。
+
+未验证真实 HTTPS 反向代理、真实 R2/Turnstile/CDN、生产域名 Cookie、跨架构镜像或浏览器视觉交互；这些需在部署者自己的外部环境另行验收。隔离测试 Docker 卷只包含程序生成的数据，不是开发或生产卷。
 
 验证日期：2026-10-11。开发环境为 macOS arm64、Node.js 26.11.1、pnpm 12.10.1；Docker 使用 Node.js 24 的 Linux arm64 镜像。未创建真实密钥或调用 Cloudflare 服务。
 

@@ -2,11 +2,13 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证变更读 README，部署、迁移、备份与恢复变更读 `docs/deployment.md`；确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、Cloudflare R2、Sharp、Cloudflare Turnstile、Docker / Docker Compose。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
 部署目标：在普通 Linux 服务器或其他支持 Docker 的主机上以 Docker Compose 运行 Next.js；SQLite 使用持久卷或绑定目录，图片继续使用 R2，匿名投稿继续使用 Turnstile。公网入口由项目外部的 HTTP/HTTPS 反向代理负责，代理终止 HTTPS，应用通过 HTTP 接收可信代理转发的请求；公开域名用 `BETTER_AUTH_URL` 配置，不硬编码。项目不管理反向代理或 TLS 证书，不依赖 Cloudflare Tunnel / Cloudflare Zero Trust。后续不要主动引入 cloudflared、Tunnel 配置文件、初始化脚本或容器服务。保持 Origin、Host、客户端 IP 与上传限制的安全边界。
+
+生产运行使用 Next.js standalone `node server.js` 和单实例 Docker Compose，SQLite 主文件/WAL/SHM 与本地图片必须位于持久卷，构建不得包含真实数据库、图片、密钥或环境文件。Dockerfile 采用与 Sharp、better-sqlite3 原生模块兼容的 Linux/Node 构建和运行环境。迁移是显式操作，先备份真实持久化数据库；启动或重启不重建数据库，不自动初始化管理员。生产不可使用测试 Turnstile 凭据、绕过投稿验证或管理员认证。应用镜像回滚不等于数据库 Schema 回滚；恢复前核对备份和图片版本。部署命令与恢复流程见 `docs/deployment.md`。
 
 涉及库、框架、SDK、API、CLI 或云服务的用法、配置、升级及库相关调试时，先用 Context7 `resolve-library-id`（已给精确 `/org/project` ID 可跳过），再 `query-docs` 查询对应概念。不同概念分开查，优先官方和版本匹配来源。普通重构、业务逻辑调试、代码审查和一般概念不需要。遵守工具调用次数限制，不可用时查官方文档并说明依据。
 

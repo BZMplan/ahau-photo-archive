@@ -2,7 +2,7 @@
 
 轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿和管理员审核。
 
-当前完成**第六阶段：公开照片展示与影像归档**。新增首页照片墙、档案筛选/分页、标签页、详情大图查看器与公开 SEO。公开查询只返回 approved，使用 LocalStorage 即可完成本地浏览。设计、查询与验收见 [公开影像指南](docs/gallery.md)。
+当前完成**第七阶段：Docker 容器化部署与生产环境配置**。公开浏览、匿名投稿和管理员审核闭环保留；部署使用单实例 Next.js standalone、Docker Compose、持久化 SQLite、显式迁移与一致性备份。正式代理、R2 权限和浏览器验收仍由部署者在目标环境完成。完整操作见 [部署指南](docs/deployment.md)，公开影像设计见 [公开影像指南](docs/gallery.md)。
 
 第五阶段审核发布能力继续保留。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
@@ -143,12 +143,18 @@ data/                           # 持久化数据，不提交
 ## Docker Compose 部署
 
 ```bash
-docker compose --env-file .env.local up --build -d
-docker compose logs -f archive
+cp .env.production.example .env.production
+chmod 600 .env.production
+# 填写生产环境变量后：
+docker compose --env-file .env.production build app admin-init
+docker compose --env-file .env.production run --rm --no-deps --entrypoint node app migrations/scripts/migrate.js
+docker compose --env-file .env.production --profile admin run --rm --no-deps admin-init
+docker compose --env-file .env.production up -d --wait app
+docker compose --env-file .env.production ps
 ```
 
-可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入同一持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key。`NEXT_PUBLIC_TURNSTILE_SITE_KEY` 会被 Next.js 编入客户端构建；当前 Dockerfile 尚未传入构建时 Site Key，第七阶段必须补齐并验证容器中的投稿 Widget，单纯在 Compose 运行时设置该变量不足以完成生产配置。容器非 root，启动先迁移；SQLite 数据库在 `archive-data` 命名卷，默认端口绑定 `127.0.0.1:3000`。首次初始化需要在可信本地终端使用源码与官方 CLI 访问同一数据库；精简运行镜像不包含开发 CLI，不能对另一份数据库创建账号后期待容器自动同步。
+可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key；投稿页按请求读取公开 Site Key，同一镜像可用于不同域名。应用容器非 root，启动前只读核对 Migration，然后执行 `node server.js`；迁移和首个管理员初始化是独立命令，失败时不启动新版本。SQLite 数据库在 `archive-data` 命名卷，备份在独立的 `archive-backups` 卷，默认端口绑定 `127.0.0.1:3000`。`admin-init` 仅是按需运行的可信 TTY 容器，不作为长期服务。
 
 公网访问由用户自行选择和配置的外部 HTTP/HTTPS 反向代理提供；本项目不管理代理或 TLS 证书。代理终止 HTTPS，通过 HTTP 转发到容器，并限制对应用端口的直接访问。将 `BETTER_AUTH_URL` 设置为真实公开 HTTPS origin；这也是 Next.js 公开页面 URL 与 Turnstile hostname 校验的来源，浏览器在此 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / `X-Forwarded-*` 推断认证域名；仅在入口不可绕过、代理剥离并重写来源头后才配置 `TRUSTED_PROXY_IP_HEADER`。代理需设置与 52 MiB 投稿请求上限兼容的请求体限制和适合图片处理的 HTTP 超时；具体配置由代理维护者负责。无需 Cloudflare Tunnel 或 Zero Trust。
 
-`docker compose down -v` 删除数据卷。备份使用 SQLite 在线备份或停服务后完整复制数据目录。构建不需要数据库、认证密钥或 R2 凭据。详情见 [架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[验证记录](docs/validation.md)、[开发约定](AGENTS.md)。
+更新前用 `migrations/scripts/backup-db.mjs` 执行 SQLite 在线备份，再停应用、构建、显式迁移和重启；恢复需停应用并确认恢复点之后的数据损失。不要运行 `docker compose down -v`，它会删除持久卷。构建不需要数据库、认证密钥或 R2 凭据。命令、故障排查和回滚边界见 [部署指南](docs/deployment.md)，设计与检查见 [架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[验证记录](docs/validation.md)、[开发约定](AGENTS.md)。

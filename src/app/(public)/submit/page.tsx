@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { Badge } from "@/components/ui/badge";
 import { SubmissionForm } from "@/components/submit/submission-form";
 export const metadata: Metadata = { title: "参与投稿" };
+export const dynamic = "force-dynamic";
 export default function SubmitPage() {
+  // This public key is read at request time so one image can serve different domains.
+  const siteKeyName = "NEXT_PUBLIC_TURNSTILE_SITE_KEY";
+  const siteKey = process.env[siteKeyName] ?? "";
   return (
     <div className="py-12 sm:py-16">
       <Badge variant="outline">匿名投稿</Badge>
@@ -12,7 +16,7 @@ export default function SubmitPage() {
       </p>
       <div className="mt-10 grid gap-12 lg:grid-cols-[1fr_300px]">
         <section aria-label="投稿表单">
-          <SubmissionForm />
+          <SubmissionForm siteKey={siteKey} />
         </section>
         <aside className="space-y-8 text-sm">
           <div>

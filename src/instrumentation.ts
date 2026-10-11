@@ -6,9 +6,12 @@ export async function register() {
     const { readAuthEnvironment } = await import("./server/auth/environment");
     const { readStorageEnvironment } =
       await import("./server/storage/environment");
+    const { assertProductionTurnstileConfiguration } =
+      await import("./server/security/turnstile-config");
     try {
       readAuthEnvironment();
       readStorageEnvironment();
+      assertProductionTurnstileConfiguration();
     } catch (error) {
       console.error(
         error instanceof Error

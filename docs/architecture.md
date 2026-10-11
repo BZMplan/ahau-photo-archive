@@ -2,7 +2,7 @@
 
 ## 单体全栈与模块
 
-Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例运行。SQLite / Sharp 不部署到 Edge；单实例配独立持久化卷，不引入 Redis 或队列。SQLite 延迟连接、进程复用，启用 WAL、外键与 5 秒 busy timeout。构建不连接运行数据库，CLI / 容器启动负责迁移。
+Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例运行。SQLite / Sharp 不部署到 Edge；单实例配独立持久化卷，不引入 Redis 或队列。SQLite 延迟连接、进程复用，启用 WAL、外键与 5 秒 busy timeout。构建不连接运行数据库；部署者在应用启动前显式运行迁移命令。
 
 ## 部署拓扑与职责
 
@@ -19,7 +19,7 @@ Next.js Application（Docker / Docker Compose，单实例）
     +---- Cloudflare Turnstile（匿名投稿 Siteverify）
 ```
 
-Next.js 容器提供 HTTP 应用与健康检查，执行数据库 Migration，并访问 R2 和 Turnstile；不管理 TLS 证书。外部反向代理由部署者选择、配置和维护，负责公网 HTTP/HTTPS 入口、TLS 终止、转发、上传请求体限制与 HTTP 超时；项目不提供代理配置或代理容器。应用端口只允许可信代理访问，Compose 默认绑定主机 loopback。部署可运行在普通 Linux 服务器或其他支持 Docker 的主机，不依赖 Cloudflare Tunnel 或 Cloudflare Zero Trust。
+Next.js 容器提供 HTTP 应用与健康检查，部署者在启动前显式执行数据库 Migration，应用运行时访问 R2 和 Turnstile；容器不管理 TLS 证书。外部反向代理由部署者选择、配置和维护，负责公网 HTTP/HTTPS 入口、TLS 终止、转发、上传请求体限制与 HTTP 超时；项目不提供代理配置或代理容器。应用端口只允许可信代理访问，Compose 默认绑定主机 loopback。部署可运行在普通 Linux 服务器或其他支持 Docker 的主机，不依赖 Cloudflare Tunnel 或 Cloudflare Zero Trust。
 
 页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
@@ -160,9 +160,9 @@ Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流�
 
 ## 部署
 
-现有基础为多阶段 Dockerfile、Next.js standalone、Docker Compose、Node.js 24、非 root、启动先迁移、SQLite 持久化和容器健康检查。认证密钥只在运行时传入，不能进入镜像；不支持多副本共享 SQLite。第七阶段仍需在真实部署环境验证持久化、Migration、日志、重启、代理和安全配置。
+生产镜像为多阶段 Debian slim / Node.js 24 构建，使用 Next.js standalone，非 root、单实例、健康检查。Compose 将 SQLite 主文件、WAL、SHM 与可选 local 图片放在 `/app/data` 持久卷，备份放独立卷；认证与 R2 密钥只在运行时传入。Migration 由一次性命令显式执行，启动前只读核对已应用版本，再执行 `node server.js`；应用重启不自动迁移或重建数据库。备份使用 SQLite Backup API，恢复须停应用并显式确认；镜像回滚不等于 Schema 回滚。不支持多副本共享 SQLite。详见 [部署指南](deployment.md)。
 
-`BETTER_AUTH_URL` 配置为浏览器实际访问的固定 HTTPS origin，不从请求的 Host 或转发头动态生成；它同时供 Better Auth 的 `baseURL` / 精确 `trustedOrigins`、Turnstile 生产 hostname 校验，以及 Next.js 的公开 metadata、sitemap 和 robots URL 使用。HTTPS 在外部代理终止，代理以 HTTP 请求应用；Better Auth 仍根据公开 HTTPS URL 设置 Secure、HttpOnly、SameSite=Lax、host-only Cookie。生产 Turnstile Widget 须绑定同一公开域名，并在 Siteverify 校验 hostname 和 action。`NEXT_PUBLIC_TURNSTILE_SITE_KEY` 是构建时公开变量；现有 Dockerfile 尚未向构建阶段传入该值，第七阶段需补齐并验证，Secret Key 仍只在运行时提供。代理需限制允许的 Host，应用继续精确校验 Origin、拒绝跨域管理员写请求，不关闭 CSRF/Origin 校验来适配代理。
+`BETTER_AUTH_URL` 配置为浏览器实际访问的固定 HTTPS origin，不从请求的 Host 或转发头动态生成；它同时供 Better Auth 的 `baseURL` / 精确 `trustedOrigins`、Turnstile 生产 hostname 校验，以及 Next.js 的公开 metadata、sitemap 和 robots URL 使用。HTTPS 在外部代理终止，代理以 HTTP 请求应用；Better Auth 仍根据公开 HTTPS URL 设置 Secure、HttpOnly、SameSite=Lax、host-only Cookie。生产 Turnstile Widget 须绑定同一公开域名，并在 Siteverify 校验 hostname 和 action。投稿页面动态读取运行时 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 并作为公开 prop 传给客户端；Secret Key 仍只在服务端运行时读取，同一镜像可用于不同公开域名。代理需限制允许的 Host，应用继续精确校验 Origin、拒绝跨域管理员写请求，不关闭 CSRF/Origin 校验来适配代理。
 
 默认不信任 `X-Forwarded-For` 或其他客户端自带 IP 头；投稿限流维持保守全局桶，认证限流维持共享 per-path 桶。只有代理入口不可绕过、代理清除用户提供的同名头并重写为可信客户端 IP，且显式配置 `TRUSTED_PROXY_IP_HEADER` 后，投稿才可按该头分桶；不能把这一设置误认为认证限流已改为 IP 分桶。代理应转发正常的 Host / Origin 信息，同时确保请求到达应用前不能由攻击者任意伪造可信来源。设置与 52 MiB 投稿上限兼容的请求体限制，并为上传、图片处理及正常响应配置合理的读取、转发和空闲超时；具体数值按部署环境压测确定。应用层继续校验请求与图片大小、来源及管理员权限，代理规则不能替代这些检查。备份恢复、监控与 CDN 缓存清理由各自的运维流程验证。
 

@@ -1,10 +1,12 @@
 services:
-  archive:
+  app:
+    image: ${APP_IMAGE:-ahau-photo-archive-app:latest}
     build: .
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
     environment:
       DATABASE_PATH: /app/data/archive.sqlite
+      BACKUP_DIR: /app/backups
       STORAGE_DRIVER: ${STORAGE_DRIVER:-r2}
       LOCAL_STORAGE_PATH: /app/data/storage
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
@@ -23,7 +25,50 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL to the exact application origin}
     volumes:
       - archive-data:/app/data
+      - archive-backups:/app/backups
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  admin-init:
+    profiles: ["admin"]
+    build:
+      context: .
+      target: admin-cli
+    environment:
+      DATABASE_PATH: /app/data/archive.sqlite
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in your runtime environment}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL to the exact application origin}
+    volumes:
+      - archive-data:/app/data
+    stdin_open: true
+    tty: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 volumes:
   archive-data:
+  archive-backups:

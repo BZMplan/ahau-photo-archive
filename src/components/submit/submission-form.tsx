@@ -32,7 +32,7 @@ const emptyMetadata = (): MetadataDraft => ({
   location: "",
 });
 
-export function SubmissionForm() {
+export function SubmissionForm({ siteKey }: { siteKey: string }) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [metadata, setMetadata] = useState<Record<string, MetadataDraft>>({});
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
@@ -48,7 +48,6 @@ export function SubmissionForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SubmissionSuccess>();
   const [requestId] = useState(() => globalThis.crypto.randomUUID());
-  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
   const itemsRef = useRef(items);
   useEffect(() => {

@@ -67,16 +67,15 @@
 
 ## 第七阶段：Docker 容器化部署与生产环境配置
 
-现有多阶段 Dockerfile、standalone 和 Compose 是基础实现；本阶段按真实部署环境复核并补齐生产配置。公网入口由用户自行配置的外部 HTTP/HTTPS 反向代理提供，本项目不管理代理或证书。
+Docker Compose 单实例部署能力已实现，公网入口仍由用户自行配置的外部 HTTP/HTTPS 反向代理提供，本项目不管理代理或证书。真实 R2 权限、正式域名代理和浏览器验收仍需部署者在其环境执行。
 
-- [ ] 复核多阶段 Dockerfile 和 Next.js standalone 构建产物
-- [ ] 复核 Docker Compose 配置与单实例运行方式，按部署环境配置应用端口和代理可达性
-- [ ] 验证 SQLite 持久卷或绑定目录、重启后数据保留
-- [ ] 整理生产环境变量，验证认证公开 URL、R2 和 Turnstile 配置；确保公开 Turnstile Site Key 在 Next.js 构建时可用
-- [ ] 验证容器健康检查、Docker 日志管理和重启策略
-- [ ] 验证启动数据库 Migration、旧库升级与迁移前备份
-- [ ] 验证反向代理兼容性：HTTPS 终止、同源请求、可信客户端 IP、上传大小和 HTTP 超时
-- [ ] 完成生产环境安全检查及浏览器响应式、主题、可访问性全流程复核
+- [x] 多阶段 Debian slim Dockerfile、Next.js standalone 与原生模块运行检查
+- [x] 单实例 Docker Compose、回环端口、受控 Docker 网络接入说明
+- [x] SQLite 与 local 图片持久卷、显式 Migration 和在线备份/恢复工具
+- [x] 生产环境变量整理；投稿页在运行时读取公开 Turnstile Site Key
+- [x] 容器健康检查、Docker 日志轮转、重启策略及非 root 安全选项
+- [x] 代理兼容要求：HTTPS 公开 URL、可信来源、上传大小和超时
+- [ ] 在正式域名与真实 R2 环境验证代理链路、桶权限和浏览器全流程
 
 ## 第八阶段：备份、监控和性能优化（可选）
 

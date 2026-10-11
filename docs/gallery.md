@@ -69,7 +69,7 @@ ImageService 已生成 600px thumbnail 与 2000px display WebP，本阶段全局
 5. 测试手机宽度、桌面、浅色/深色和长标题；图片加载失败显示提示，没有请求 originals/previews。
 6. 管理员撤回，重新请求首页、档案、标签、sitemap 不再含该照片，详情及旧 local 图片 URL 为 404。恢复后重新出现，公开 URL 与旧版本不同，原图仍私有。
 
-真实 R2 权限、CDN purge、手机触摸和浏览器交互需上线前额外验收。第七阶段复核单实例 Docker Compose 部署、SQLite 持久化与外部反向代理兼容性；备份恢复演练、失败 operation/purge 任务监控与性能优化列为可选第八阶段，不增加搜索或社交基础设施。
+真实 R2 权限、CDN purge、手机触摸和浏览器交互需上线前额外验收。第七阶段已实现单实例 Docker Compose 部署、SQLite 持久化与外部反向代理接入说明；长期备份策略、失败 operation/purge 任务监控与性能优化列为可选第八阶段，不增加搜索或社交基础设施。
 
 ## 文档依据
 
