@@ -4,7 +4,11 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
     environment: "node",
-    include: ["tests/storage/**/*.test.ts", "tests/images/**/*.test.ts"],
+    include: [
+      "tests/storage/**/*.test.ts",
+      "tests/images/**/*.test.ts",
+      "tests/submissions/**/*.test.ts",
+    ],
     setupFiles: ["./tests/vitest.setup.ts"],
     testTimeout: 20_000,
   },

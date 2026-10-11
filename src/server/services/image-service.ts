@@ -92,6 +92,41 @@ export class ImageService {
     if (key !== previewKey(photoId)) assertOriginalKey(photoId, key);
     return this.storage.private.get(key);
   }
+  /** Internal submission compensation; callers must already have validated ownership of these keys. */
+  async cleanupPrivateFiles(
+    photoId: string,
+    sourceKey: string,
+    privatePreviewKey: string,
+  ): Promise<void> {
+    assertOriginalKey(photoId, sourceKey);
+    if (privatePreviewKey !== previewKey(photoId))
+      throw new StorageError("INVALID_KEY");
+    await locked(photoId, async () => {
+      const results = await Promise.allSettled([
+        this.storage.private.delete(sourceKey),
+        this.storage.private.delete(privatePreviewKey),
+      ]);
+      if (results.some((result) => result.status === "rejected"))
+        throw new StorageError("IO_ERROR");
+    });
+  }
+  /** Remove every canonical private object for a known photo id after an uncertain write. */
+  async cleanupPrivatePhoto(photoId: string): Promise<void> {
+    assertPhotoId(photoId);
+    await locked(photoId, async () => {
+      const objects = [
+        previewKey(photoId),
+        ...(["jpeg", "png", "webp"] as ImageFormat[]).map((format) =>
+          originalKey(photoId, format),
+        ),
+      ];
+      const results = await Promise.allSettled(
+        objects.map((key) => this.storage.private.delete(key)),
+      );
+      if (results.some((result) => result.status === "rejected"))
+        throw new StorageError("IO_ERROR");
+    });
+  }
   async generatePreview(photoId: string, sourceKey: string) {
     assertOriginalKey(photoId, sourceKey);
     return locked(photoId, async () => {

@@ -26,13 +26,57 @@ export const submissions = sqliteTable(
   "submissions",
   {
     id: uuid(),
+    // attribution/contact are retained for records created before phase 4.
     attribution: text("attribution"),
     contact: text("contact"),
+    authorName: text("author_name"),
+    contactEmail: text("contact_email"),
+    message: text("message"),
+    consentAccepted: integer("consent_accepted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    consentedAt: integer("consented_at", { mode: "timestamp_ms" }),
+    requestId: text("request_id"),
     submittedAt: integer("submitted_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (table) => [index("submissions_submitted_at_idx").on(table.submittedAt)],
+  (table) => [
+    index("submissions_submitted_at_idx").on(table.submittedAt),
+    uniqueIndex("submissions_request_id_unique").on(table.requestId),
+  ],
+);
+
+export const submissionOperations = sqliteTable(
+  "submission_operations",
+  {
+    id: uuid(),
+    requestId: text("request_id").notNull().unique(),
+    state: text("state", {
+      enum: ["writing", "failed", "complete", "cleanup_failed"],
+    }).notNull(),
+    objects: text("objects", { mode: "json" })
+      .$type<{ photoId: string; key: string }[]>()
+      .notNull(),
+    errorCode: text("error_code"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index("submission_operations_state_idx").on(table.state)],
+);
+
+export const submissionRateLimits = sqliteTable(
+  "submission_rate_limits",
+  {
+    bucketKey: text("bucket_key").primaryKey(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    submissionCount: integer("submission_count").notNull().default(0),
+    photoCount: integer("photo_count").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("submission_rate_limits_updated_idx").on(table.updatedAt)],
 );
 
 export const photos = sqliteTable(

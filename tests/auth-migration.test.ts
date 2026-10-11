@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { openDatabase } from "../src/server/db/connection";
-import { moderationLogs, submissions } from "../src/server/db/schema";
+import { moderationLogs } from "../src/server/db/schema";
 import { user } from "../src/server/db/auth-schema";
 
 test("additive authentication migration preserves existing business records and review history", () => {
@@ -34,14 +34,16 @@ test("additive authentication migration preserves existing business records and 
   const { db, sqlite } = openDatabase(join(directory, "archive.sqlite"));
   try {
     migrate(db, { migrationsFolder: oldFolder });
-    const batch = db
-      .insert(submissions)
-      .values({
-        attribution: "Existing author",
-        contact: "private@example.invalid",
-      })
-      .returning()
-      .get();
+    // Use the historical column list: today's Drizzle insert includes phase-4 fields.
+    const batch = { id: randomUUID() };
+    sqlite
+      .prepare(
+        "INSERT INTO submissions (id, attribution, contact, submitted_at) VALUES (?, ?, ?, ?)",
+      )
+      .run(batch.id, "Existing author", "private@example.invalid", Date.now());
+    const beforeSubmission = sqlite
+      .prepare("SELECT * FROM submissions WHERE id = ?")
+      .get(batch.id);
     // Use the historical column list: today's Drizzle insert includes preview_key.
     const photo = { id: randomUUID() };
     sqlite
@@ -75,7 +77,25 @@ test("additive authentication migration preserves existing business records and 
       .get();
     migrate(db, { migrationsFolder: "drizzle" });
     migrate(db, { migrationsFolder: "drizzle" });
-    assert.deepEqual(db.select().from(submissions).all(), [batch]);
+    const upgradedSubmission = sqlite
+      .prepare("SELECT * FROM submissions WHERE id = ?")
+      .get(batch.id) as Record<string, unknown>;
+    const {
+      author_name: _authorName,
+      contact_email: _contactEmail,
+      message: _message,
+      consent_accepted: _consentAccepted,
+      consented_at: _consentedAt,
+      request_id: _requestId,
+      ...preservedSubmission
+    } = upgradedSubmission;
+    void _authorName;
+    void _contactEmail;
+    void _message;
+    void _consentAccepted;
+    void _consentedAt;
+    void _requestId;
+    assert.deepEqual(preservedSubmission, beforeSubmission);
     const upgradedPhoto = sqlite
       .prepare<[string], Record<string, unknown>>(
         "SELECT * FROM photos WHERE id = ?",

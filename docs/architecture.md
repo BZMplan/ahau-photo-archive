@@ -15,8 +15,10 @@ Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例�
 | `auth/http`                                     | HTTP 认证接口白名单与敏感字段过滤                  |
 | `auth/cli` / `scripts/admin-init`               | 官方 CLI 配置与安全初始化包装                      |
 | `storage` / `images` / `services/image-service` | 隔离 Adapter、格式验证、Sharp、发布/撤回及恢复日志 |
-| `security/turnstile`                            | 仍为预留接口，明确未实现                           |
-| `services/submissions`、`services/moderation`   | 仅预留业务接口，不写入数据                         |
+| `security/turnstile`                            | Siteverify 服务端验证、hostname/action 校验        |
+| `security/submission`                           | Origin 检查、HMAC 来源桶                           |
+| `services/submissions`                          | 批量私有保存、限流、幂等、数据库事务与补偿         |
+| `services/moderation`                           | 仍为预留接口，不写入审核状态                       |
 
 ## 认证架构与数据流
 
@@ -65,7 +67,7 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 
 ## 数据模型与兼容性
 
-业务表基础结构保留，第三阶段增量增加 photos.preview_key 和 image_operations：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
+业务表基础结构保留，增量增加 photos.preview_key、image_operations、投稿字段及 `submission_operations` / `submission_rate_limits`：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。投稿署名、联系邮箱、备注、授权时间和客户端幂等 request_id 仅服务端保存；拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
 
 新增认证表基于 1.7.7 官方 CLI 生成，并经 Drizzle Migration：
 
@@ -74,6 +76,8 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 - `account`：用户外键与索引、credential 密码哈希及标准 provider/token 字段。
 - `verification`：标识、验证值、过期与索引，为 Better Auth 标准表，暂不开放邮件验证业务。
 - `rate_limit`：唯一请求桶 Key、次数与最后请求时间。
+- `submission_operations`：匿名批次的 writing / failed / cleanup_failed / complete、请求 ID 和待清理私有对象；用于文件失败补偿，不代表照片已审核。
+- `submission_rate_limits`：HMAC 来源的小时投稿数、日照片数和窗口时间；不保存原始 IP。
 
 新 `0001` 只 CREATE 认证表/索引，保留 `0000` 和全部业务数据；不重建业务表。当前实际 `photos` **没有 `reviewed_by` 字段**，日志 `admin_id` 为 UUID 兼容的文本但没有用户外键。认证 ID 使用 UUID 文本，与未来审核关联兼容。后续审核阶段用新的增量迁移添加可空 `photos.reviewed_by` 外键，并先评估历史日志再建立用户关联，不能强行破坏历史记录。本阶段没有审核写入口。
 
@@ -95,7 +99,31 @@ GET /api/admin/photos/[id]/preview 先 requireAdmin 再查照片匹配的私有 
 
 unpublish 仅删公开图，delete 清全部文件，均幂等、不改业务表；以后业务先隐藏，再删除对象和撤销缓存。60 秒公开缓存不保证紧急撤回，CDN purge 尚未实现，绝不能宣称删除对象等于全网缓存消失。
 
-下一阶段匿名投稿仍需请求体限制、文件验证、可靠防刷、Turnstile 与授权/隐私说明；本阶段没有投稿或审核写入入口。
+## 匿名投稿数据流
+
+```text
+同源游客 /submit
+ → 浏览器选择 1–5 个 File，生成 object URL，仅本地预览
+ → 逐张填写标题、描述、拍摄日期、地点和批次署名
+ → 勾选版权/隐私/审核授权 + Turnstile
+ → POST multipart /api/submissions
+ → Origin、Content-Length、字段、文件数量/总量、Zod 重新验证
+ → Siteverify 校验 success + 预期 hostname + action=submit
+ → HMAC 来源检查 SQLite 小时/日限额
+ → ImageService 顺序保存原图 private，并生成 private preview
+ → SQLite 事务创建 1 条 submission + 1–5 条 pending photos
+ → 事务成功返回 submissionId / photoCount / pending
+```
+
+Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流程。提交记录同时填充新字段和旧 `attribution/contact` 兼容字段，`consentedAt` 由服务端生成。`photos.displayKey`、`thumbnailKey`、`publishedAt` 始终为 NULL，任何匿名请求都没有发布能力。
+
+对象存储和 SQLite 没有跨系统事务。`submission_operations` 在第一份文件写入前建立，随着每张照片写入记录私有原图/预览 Key；完整数据库事务成功才标记 complete。任何验证、存储或数据库错误都会按记录清理已写对象；清理失败标记 cleanup_failed 并记录无敏感内容的 operationId，供后续人工排查。失败清理成功的 requestId 可安全重试，已完成 requestId 返回同一受理结果，不重复建立批次。
+
+投稿请求默认使用全局保守限流桶；只有在可信反向代理已剥离外部伪造头并显式设置 `TRUSTED_PROXY_IP_HEADER` 时，才按该头的 HMAC 摘要分桶。`RATE_LIMIT_SECRET` 优先，否则本地回退 `BETTER_AUTH_SECRET`；每小时最多 3 次成功批次，每天最多 15 张照片，计数在最终 SQLite 事务中增加。限流不依赖 localStorage，不记录原始 IP。
+
+`/api/submissions` 只接受同源 `Origin`（缺少 Origin 的非浏览器请求仍可进入服务端校验），无 CORS 通配。请求体 Content-Length 上限 52 MiB，图片总字节上限 50 MiB，单张 10 MiB；解析后仍检查实际 File 大小。Next.js/Cloudflare Tunnel 前置代理还应设置等价的 body limit，不能把 Content-Length 当作唯一安全边界。
+
+完整字段、错误状态、Turnstile 和本地测试见 [submissions.md](submissions.md)。
 
 ## 部署
 

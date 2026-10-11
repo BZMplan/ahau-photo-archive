@@ -171,14 +171,17 @@ test("administrator API denies access and submission endpoint reports unavailabl
   assert.deepEqual(await adminResponse.json(), {
     error: { code: "UNAUTHORIZED", message: "请先登录管理员账号。" },
   });
-  assert.equal(submit().status, 501);
+  assert.equal(
+    (await submit(new Request("http://localhost:3000/api/submissions"))).status,
+    400,
+  );
 });
 
-test("storage configuration and invalid images fail safely; Turnstile stays unavailable", async () => {
+test("storage configuration and invalid images fail safely; Turnstile requires configuration", async () => {
   assert.throws(
     () => readStorageEnvironment({ STORAGE_DRIVER: "r2" }),
     /R2_ACCOUNT_ID/,
   );
   await assert.rejects(validateImage(Buffer.from("not an image")), /仅支持/);
-  await assert.rejects(verifyTurnstile("not-a-token"), /not implemented/);
+  await assert.rejects(verifyTurnstile("not-a-token"), /尚未配置/);
 });

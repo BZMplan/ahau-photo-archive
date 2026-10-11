@@ -2,7 +2,7 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证与图片基础设施；投稿、审核与图片 UI 未开放。业务开发前读 `docs/architecture.md` 的权限边界；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md` 的一致性协议与运维限制；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施和匿名投稿；审核与正式发布业务未开放。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md` 的一致性协议与运维限制；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、R2、Sharp、Turnstile、Docker。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
@@ -33,6 +33,11 @@
 - 每个管理员 API / Server Action 先用 `server/auth/admin.ts` 的 `requireAdmin` 验证有效会话和当前角色，错误用 `authenticationErrorResponse`：未登录 401、无权限 403、no-store。只返回显式 DTO，不返回 Token、哈希或完整 Session。
 - 后台布局与每个叶子页面取私有数据前均调用 `requireAdminPage`；登录页在保护布局外。React cache 仅请求内去重，布局、Middleware、客户端按钮状态均不能替代页面/API 鉴权。
 - 投稿存储前完成文件校验、频率限制、Turnstile 服务端验证；公众无需注册。
+- 匿名投稿只允许 1–5 张图片，服务端限制单张 10 MiB、批次 50 MiB、请求体 52 MiB；前端限制只是体验，不能替代服务端校验。
+- `/api/submissions` 只能创建 pending；字段使用 `SubmissionService` 和 Zod 校验，照片元数据按稳定文件顺序关联，不能按文件名匹配。
+- 投稿授权必须明确勾选，`consentedAt` 由服务端生成；联系邮箱不进入公开 DTO，submissionId 不是私有图片授权凭证。
+- Turnstile 必须调用官方 Siteverify，校验 success、预期 hostname 和 action；生产缺 secret 时拒绝投稿，不能使用客户端标记绕过。
+- 投稿限流使用服务端 SQLite 和 HMAC 来源摘要，默认保守全局桶；只有明确可信代理才能读取配置的来源头，不能信任任意 `X-Forwarded-For`。
 - 公开查询复用获批且可公开条件、显式选字段；非公开详情统一按未找到处理。
 
 ## 管理员认证
@@ -54,10 +59,12 @@
 - 撤回只清公开图、保留原图；永久删除仍保留业务历史。删除幂等，隐藏/拒绝还需撤销 CDN 缓存；不能宣称 R2 删除等于即时全网撤回，当前无 purge 实现。
 - local/r2 显式切换，生产缺 R2 配置要失败、不能静默回退；密钥只读服务端环境、禁止硬编码。测试用临时目录/数据库和 SDK mock，不连接真实云或填入开发/生产测试照片。
 - 未接入功能不调用真实 Cloudflare API、不模拟成功。凭据在服务端环境变量，`.env.example` 只含空值及非敏感示例，秘密不使用 `NEXT_PUBLIC_`。
+- 批量投稿先写 `submission_operations`，逐张保存私有原图/预览；SQLite 提交成功后才返回 201，任一失败都必须补偿清理，清理失败要保留 operation 记录供排查。
+- 不把 pending 图片、原图或预览写入公开 Bucket；投稿流程不得调用 `publishImage`，公开 Key、签名 URL 和存储凭据不能返回游客。
 
 ## 完成检查
 
-提交前 `pnpm check` 和 `pnpm build`（check 含 Vitest）；数据库变更验证首次、重复与旧库升级，`pnpm db:compile`。认证或图片路由变更在 build 后运行 `pnpm test:auth-flow`。存储变更覆盖发布失败/清理失败/重启恢复、原图不变、方向/元数据、路径隔离与权限。确认 standalone 未追踪数据/环境/测试文件。保留未实现功能明确的拒绝行为，报告未执行的真实云/浏览器检查。
+提交前 `pnpm check` 和 `pnpm build`（check 含 Vitest）；数据库变更验证首次、重复与旧库升级，`pnpm db:compile`。认证、图片或投稿路由变更在 build 后运行 `pnpm test:auth-flow`。存储变更覆盖发布失败/清理失败/重启恢复、原图不变、方向/元数据、路径隔离与权限；投稿变更覆盖单/多图、字段错位、Turnstile、限流、幂等、失败清理、pending 与无公开对象。确认 standalone 未追踪数据/环境/测试文件。保留未实现功能明确的拒绝行为，报告未执行的真实云/浏览器检查。
 
 更新中文文档，报告通过和未能执行的检查。审阅 staged diff，确认没有数据库、密钥、上传或构建产物；任务未要求时不建远程仓库或推送。
 

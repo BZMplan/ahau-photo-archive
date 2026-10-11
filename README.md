@@ -1,12 +1,12 @@
 # AH AU Photo Archive
 
-轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，后续支持匿名投稿和管理员审核。
+轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿，后续接入管理员审核。
 
-当前完成**第三阶段：图片存储与处理基础设施**。支持隔离的本地/R2 存储、Sharp 验证与衍生图、管理员私有预览，以及发布/撤回底层服务。管理员认证继续可用；没有公开上传、发布接口或完整审核业务，图片 UI 和检索仍未开放。
+当前完成**第四阶段：匿名投稿与批量图片上传**。支持隔离的本地/R2 存储、Sharp 验证与私有预览、匿名 1–5 张批量投稿、逐张元数据、Turnstile 服务端验证、SQLite HMAC 限流、幂等请求和失败补偿。所有新照片保持 `pending`，没有自动发布；管理员审核与正式发布业务仍未开放。
 
 ## 技术栈
 
-TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp 已实现，图片测试使用 Vitest 5；Turnstile 后续服务端验证。Docker 单实例部署，未来通过 Cloudflare Tunnel 提供服务。
+TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；Docker 单实例部署，未来通过 Cloudflare Tunnel 提供服务。
 
 精确版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 由 `packageManager` 固定。`pnpm-workspace.yaml` 仅配置依赖构建许可，本项目不是 Monorepo。
 
@@ -18,7 +18,7 @@ cp .env.example .env.local
 pnpm auth:secret
 ```
 
-将命令生成的随机密钥填入 `.env.local` 的 `BETTER_AUTH_SECRET`，至少 32 字符；保留 `BETTER_AUTH_URL=http://localhost:3000` 或设置为你实际访问的本地 origin。不要把密钥粘贴到命令参数或提交到 Git。本地设置 `STORAGE_DRIVER=local`，R2 / Turnstile 凭据留空。已有 `.env.local` 时仅补充新变量，不覆盖原有认证密钥。
+将命令生成的随机密钥填入 `.env.local` 的 `BETTER_AUTH_SECRET`，至少 32 字符；保留 `BETTER_AUTH_URL=http://localhost:3000` 或设置为你实际访问的本地 origin。不要把密钥粘贴到命令参数或提交到 Git。本地设置 `STORAGE_DRIVER=local`。投稿页面需要 Turnstile Site Key；本地可使用 Cloudflare 官方测试 Site Key 和 Secret Key。已有 `.env.local` 时仅补充新变量，不覆盖原有认证密钥。
 
 ```bash
 pnpm db:migrate
@@ -43,18 +43,18 @@ pnpm dev
 
 ## 页面与 API
 
-| 路由                                                 | 当前行为                                       |
-| ---------------------------------------------------- | ---------------------------------------------- |
-| `/`、`/photo/[id]`                                   | 公开档案与详情；不存在或非公开照片 404         |
-| `/submit`                                            | 禁用的投稿预览                                 |
-| `/admin/login`                                       | 真实登录；已登录管理员自动跳转后台             |
-| `/admin`、`/admin/reviews`、`/admin/photos`          | 服务端保护；后台布局、当前管理员、后续业务入口 |
-| `GET /api/admin/me`                                  | 管理员基本信息；匿名 401，非管理员 403         |
-| `GET /api/admin/photos`                              | 同样鉴权，通过后 501，照片业务尚未实现         |
-| `POST /api/auth/sign-in/email`、`/api/auth/sign-out` | Better Auth 登录 / 退出                        |
-| `GET /api/auth/get-session`、`/api/auth/ok`          | 精简会话响应 / 认证健康检查                    |
-| `GET /api/health`                                    | 数据库可用 200，否则 503                       |
-| `POST /api/submissions`                              | 501，尚未实现                                  |
+| 路由                                                 | 当前行为                                           |
+| ---------------------------------------------------- | -------------------------------------------------- |
+| `/`、`/photo/[id]`                                   | 公开档案与详情；不存在或非公开照片 404             |
+| `/submit`                                            | 匿名批量投稿表单；提交后进入待审核                 |
+| `/admin/login`                                       | 真实登录；已登录管理员自动跳转后台                 |
+| `/admin`、`/admin/reviews`、`/admin/photos`          | 服务端保护；后台布局、当前管理员、后续业务入口     |
+| `GET /api/admin/me`                                  | 管理员基本信息；匿名 401，非管理员 403             |
+| `GET /api/admin/photos`                              | 同样鉴权，通过后 501，照片业务尚未实现             |
+| `POST /api/auth/sign-in/email`、`/api/auth/sign-out` | Better Auth 登录 / 退出                            |
+| `GET /api/auth/get-session`、`/api/auth/ok`          | 精简会话响应 / 认证健康检查                        |
+| `GET /api/health`                                    | 数据库可用 200，否则 503                           |
+| `POST /api/submissions`                              | 匿名 multipart 投稿；201 pending，失败返回 4xx/5xx |
 
 ## 图片存储与处理
 
@@ -76,6 +76,10 @@ pnpm test:images
 
 完整接口、恢复策略、手动 R2 配置、备份与成本见 [存储指南](docs/storage.md)。本阶段没有调用真实 Cloudflare API、上传真实照片或部署。
 
+## 匿名投稿
+
+`/submit` 支持拖拽、追加和删除 1–5 张照片，并为每张照片编辑标题、描述、拍摄日期和校园地点。投稿者填写署名、可选邮箱和备注，明确勾选授权，完成 Turnstile 后提交。服务端重新验证字段、图片编码、请求/批次大小、Origin、Turnstile 和 SQLite 限流；通过 `SubmissionService` 保存私有原图与预览，在事务中创建 pending 批次。失败会补偿清理，重复 `submissionRequestId` 不会重复创建。详细请求字段、错误码、环境变量和手动验证见 [匿名投稿指南](docs/submissions.md)。
+
 ## 开发命令
 
 | 命令                                   | 用途                                                              |
@@ -93,7 +97,7 @@ pnpm test:images
 | `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
 | `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
 
-新增命令：`pnpm test:images`（Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
+新增命令：`pnpm test:images`（图片、存储、投稿 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
 
 生产迁移前备份，使用 `generate` / `migrate`，不使用 `push` 替代版本管理，不编辑历史 Migration。所有测试账号和随机密码仅用于独立临时数据库，测试后删除。
 
@@ -108,18 +112,20 @@ src/
   app/api/admin/                # 每个 API 单独鉴权
   components/ui/                # shadcn/ui
   components/admin-*.tsx        # 登录、退出、后台布局
+  components/submit/             # 多图片选择、元数据和 Turnstile 表单
   lib/auth-client.ts            # 浏览器认证客户端
   server/auth/                  # 配置、会话/权限、页面保护、官方 CLI 配置
   server/db/                    # 业务与认证 Schema、连接
   server/storage/               # Adapter、Key、配置、URL、持久操作日志
   server/images/                # 验证、元数据、Sharp、集中参数
   server/services/image-service.ts # 文件操作，业务状态由未来审核服务负责
-  server/{security,services}/
+  server/security/                # Turnstile、来源 HMAC、投稿限制
+  server/services/                # ImageService、SubmissionService
   types/                        # 公开及管理员 DTO
   instrumentation.ts            # 运行时认证环境校验
 drizzle/                        # 增量 SQL 与快照
 scripts/                        # 管理员初始化、迁移、生产启动
-tests/{storage,images}/         # Vitest，隔离数据与 SDK mock
+tests/{storage,images,submissions}/ # Vitest，隔离数据与 SDK mock
 tests/http/                     # 真正 Next.js 服务的认证/图片 HTTP 流程
 docs/                           # 中文架构、路线图、验证记录
 data/                           # 持久化数据，不提交
