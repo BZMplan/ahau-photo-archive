@@ -14,4 +14,22 @@ export interface PublicPhoto {
   width: number | null;
   height: number | null;
   tags: string[];
+  tagSlugs: string[];
+}
+
+export type PublicPhotoSort =
+  "published-desc" | "published-asc" | "taken-desc" | "taken-asc";
+
+export interface PublicTag {
+  name: string;
+  slug: string;
+  count: number;
+}
+
+export interface PublicPhotoPage {
+  items: PublicPhoto[];
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  total: number;
 }

@@ -12,7 +12,12 @@ import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { openDatabase } from "../../src/server/db/connection";
-import { photos, submissions } from "../../src/server/db/schema";
+import {
+  photos,
+  submissions,
+  tags,
+  photoTags,
+} from "../../src/server/db/schema";
 import { session } from "../../src/server/db/auth-schema";
 import { createArchiveAuth } from "../../src/server/auth/options";
 
@@ -362,6 +367,8 @@ test("real HTTP moderation flow publishes, hides and restores a local photo", as
       id,
       submissionId: batch.id,
       title: "待审核 HTTP 照片",
+      takenAt: "2025-10-01",
+      location: "图书馆",
       originalKey,
       previewKey,
       mimeType: "image/png",
@@ -378,6 +385,13 @@ test("real HTTP moderation flow publishes, hides and restores a local photo", as
       (item: { id: string }) => item.id === id,
     ),
   );
+  assert.equal((await get(`/photo/${id}`)).status, 404);
+  const label = db
+    .insert(tags)
+    .values({ name: "HTTP 标签", slug: "http-gallery" })
+    .returning()
+    .get();
+  db.insert(photoTags).values({ photoId: id, tagId: label.id }).run();
   const approve = await post(`/api/admin/reviews/${id}/approve`, {}, admin);
   assert.equal(approve.status, 200);
   const approved = db.select().from(photos).where(eq(photos.id, id)).get();
@@ -388,17 +402,89 @@ test("real HTTP moderation flow publishes, hides and restores a local photo", as
     200,
   );
   assert.equal((await get(`/api/admin/photos/${id}/logs`, admin)).status, 200);
+  for (const path of [
+    "/",
+    "/archive?year=2025&season=autumn&tag=http-gallery",
+    "/tags/http-gallery",
+    `/photo/${id}`,
+  ]) {
+    const response = await get(path);
+    assert.equal(response.status, 200, path);
+    assert.match(
+      response.headers.get("cache-control") || "",
+      /no-store|private/,
+    );
+    const html = await response.text();
+    assert.ok(html.includes(id), path);
+    assert.ok(!html.includes(originalKey));
+    assert.ok(!html.includes(previewKey));
+    if (path.startsWith("/photo/")) assert.ok(html.includes("og:image"));
+  }
+  assert.equal((await get("/tags/does-not-exist")).status, 404);
+  assert.equal((await get(`/photo/${randomUUID()}`)).status, 404);
+  assert.ok((await (await get("/sitemap.xml")).text()).includes(id));
+  const edited = await fetch(`${origin}/api/admin/photos/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: origin,
+      Cookie: admin,
+    },
+    body: JSON.stringify({
+      title: "更新后的公开标题",
+      description: "公开说明",
+      location: "图书馆",
+      takenAt: "2025-10-01",
+      tags: ["HTTP 标签"],
+    }),
+  });
+  assert.equal(edited.status, 200);
+  const updatedHtml = await (await get(`/photo/${id}`)).text();
+  assert.ok(updatedHtml.includes("更新后的公开标题"));
+  assert.ok(updatedHtml.includes("2025-10-01"));
+  // A broken public object must produce 404 rather than falling back to the original.
+  const missingId = randomUUID();
+  db.insert(photos)
+    .values({
+      id: missingId,
+      submissionId: batch.id,
+      title: "缺失公开对象",
+      status: "approved",
+      originalKey: `originals/${missingId}/original.png`,
+      displayKey: `photos/${missingId}/display.webp`,
+      thumbnailKey: `photos/${missingId}/thumbnail.webp`,
+      publishedAt: new Date(),
+      mimeType: "image/png",
+      byteSize: 100,
+    })
+    .run();
+  assert.equal(
+    (await get(`/api/images/photos/${missingId}/display.webp`)).status,
+    404,
+  );
+  db.delete(photos).where(eq(photos.id, missingId)).run();
   const hidden = await post(`/api/admin/photos/${id}/hide`, {}, admin);
   assert.equal(hidden.status, 200);
   assert.equal(
     db.select().from(photos).where(eq(photos.id, id)).get()?.status,
     "hidden",
   );
+  assert.equal((await get(`/photo/${id}`)).status, 404);
+  assert.equal((await get(`/api/images/${approved!.displayKey}`)).status, 404);
+  for (const path of ["/", "/archive", "/tags/http-gallery", "/sitemap.xml"]) {
+    assert.ok(!(await (await get(path)).text()).includes(id), path);
+  }
   const restored = await post(`/api/admin/photos/${id}/restore`, {}, admin);
   assert.equal(restored.status, 200);
   const restoredPhoto = db.select().from(photos).where(eq(photos.id, id)).get();
   assert.equal(restoredPhoto?.status, "approved");
   assert.notEqual(restoredPhoto?.publicationId, approved?.publicationId);
+  assert.equal((await get(`/photo/${id}`)).status, 200);
+  assert.equal((await get(`/api/images/${approved!.displayKey}`)).status, 404);
+  assert.equal(
+    (await get(`/api/images/${restoredPhoto!.displayKey}`)).status,
+    200,
+  );
   await post("/api/auth/sign-out", {}, admin);
 });
 

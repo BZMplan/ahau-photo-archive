@@ -9,6 +9,7 @@ export default defineConfig({
       "tests/images/**/*.test.ts",
       "tests/submissions/**/*.test.ts",
       "tests/moderation/**/*.test.ts",
+      "tests/public-gallery/**/*.test.ts",
     ],
     setupFiles: ["./tests/vitest.setup.ts"],
     testTimeout: 20_000,

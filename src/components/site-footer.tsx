@@ -8,7 +8,10 @@ export function SiteFooter() {
           为校园留一份影像记忆
         </p>
         <div className="flex gap-6">
-          <span>校园影像 · 持续整理</span>
+          <Link href="/submit" className="hover:text-foreground">
+            照片投稿
+          </Link>
+          <span>作品版权归摄影者所有</span>
           <Link className="hover:text-foreground" href="/admin/login">
             管理员入口
           </Link>

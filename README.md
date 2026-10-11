@@ -1,8 +1,10 @@
 # AH AU Photo Archive
 
-轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿，后续接入管理员审核。
+轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿和管理员审核。
 
-当前完成**第五阶段：管理员审核与发布闭环**。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
+当前完成**第六阶段：公开照片展示与影像归档**。新增首页照片墙、档案筛选/分页、标签页、详情大图查看器与公开 SEO。公开查询只返回 approved，使用 LocalStorage 即可完成本地浏览。设计、查询与验收见 [公开影像指南](docs/gallery.md)。
+
+第五阶段审核发布能力继续保留。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
 ## 技术栈
 
@@ -47,7 +49,7 @@ pnpm dev
 
 | 路由                                                    | 当前行为                                           |
 | ------------------------------------------------------- | -------------------------------------------------- |
-| `/`、`/photo/[id]`                                      | 公开档案与详情；不存在或非公开照片 404             |
+| `/`、`/archive`、`/photo/[id]`、`/tags/[slug]`          | 公开档案与详情；不存在或非公开照片 404             |
 | `/submit`                                               | 匿名批量投稿表单；提交后进入待审核                 |
 | `/admin/login`                                          | 真实登录；已登录管理员自动跳转后台                 |
 | `/admin`、`/admin/reviews`、`/admin/photos`             | 服务端保护；真实审核队列、状态筛选、发布/撤回/恢复 |
@@ -104,7 +106,7 @@ pnpm test:images
 | `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
 | `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
 
-新增命令：`pnpm test:images`（图片、存储、投稿、审核 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
+新增命令：`pnpm test:images`（图片、存储、投稿、审核、公开影像 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
 
 生产迁移前备份，使用 `generate` / `migrate`，不使用 `push` 替代版本管理，不编辑历史 Migration。所有测试账号和随机密码仅用于独立临时数据库，测试后删除。
 
@@ -112,7 +114,7 @@ pnpm test:images
 
 ```text
 src/
-  app/(public)/                 # 公开首页、详情、投稿
+  app/(public)/                 # 公开首页、档案、标签、详情、投稿
   app/admin/login/              # 登录独立于受保护布局
   app/admin/(dashboard)/        # 后台、审核、照片管理
   app/api/auth/[...all]/        # 限定 Better Auth HTTP 接口

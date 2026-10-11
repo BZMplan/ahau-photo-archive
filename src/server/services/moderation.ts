@@ -813,6 +813,10 @@ function safePublicUrl(key: string | null): string | null {
 function revalidateAdminPaths(): void {
   try {
     revalidatePath("/");
+    revalidatePath("/archive");
+    revalidatePath("/photo/[id]", "page");
+    revalidatePath("/tags/[slug]", "page");
+    revalidatePath("/sitemap.xml");
     revalidatePath("/admin");
     revalidatePath("/admin/reviews");
     revalidatePath("/admin/photos");

@@ -2,7 +2,7 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、R2、Sharp、Turnstile、Docker。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
@@ -50,6 +50,14 @@
 - SQLite 与 R2 没有跨系统原子事务；image_operations receipt、失败补偿和 cleanup_failed 记录必须保留。不能自动删除可能已提交的 awaiting_commit 对象。
 - Next 页面缓存刷新与 Cloudflare CDN purge 分开处理。未配置/失败的 purge 必须显式报告，不能声称 R2 删除立即清除全网缓存。
 - 撤回产生的 CDN purge 结果写入 `cache_purge_tasks`；失败任务不得静默丢弃，后续重试应按记录的 URL 执行。
+
+## 公开展示
+
+- 公开查询统一经 services/public-photos，共用 approved 与完整公开资源条件；DTO 字段白名单，禁止输出私有 Key、投稿联系方式、审核历史或管理员信息。
+- 页面仅使用 storage/urls 生成的批准衍生图 URL，不读取私有原图；thumbnail 用于照片墙、display 用于详情，保留宽高比与失败占位。
+- 列表分页有上限，筛选/排序在 SQL 执行，时间排序附加唯一 ID；takenAt 为日历日期，空日期不归入年份/季节。地点复用 normalizeLocation。
+- 公开页动态查询，撤回后新请求列表排除且详情 404；Next revalidatePath 与 CDN purge 分开验证，不缓存过期审核状态。
+- 正式页面只展示真实批准照片，无数据用空状态；保持服务端组件为主，新增复杂前端依赖前说明必要性。
 
 ## 管理员认证
 

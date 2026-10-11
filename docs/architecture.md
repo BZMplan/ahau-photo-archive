@@ -68,7 +68,7 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 
 ## 数据模型与兼容性
 
-业务表基础结构保留，增量增加 photos.preview_key、image_operations、投稿字段及 `submission_operations` / `submission_rate_limits`：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。投稿署名、联系邮箱、备注、授权时间和客户端幂等 request_id 仅服务端保存；拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
+业务表基础结构保留，增量增加 photos.preview_key、image_operations、投稿字段及 `submission_operations` / `submission_rate_limits`：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。投稿署名、联系邮箱、备注、授权时间和客户端幂等 request_id 仅服务端保存；拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，默认每页 24 条、上限 60 条；不返回原图 Key、联系方式或管理员信息。
 
 新增认证表基于 1.7.7 官方 CLI 生成，并经 Drizzle Migration：
 
@@ -156,3 +156,7 @@ Next.js standalone、Docker Node.js 24、非 root、启动先迁移、SQLite 持
 - [Cookies](https://better-auth.com/docs/concepts/cookies)
 - [Next.js authentication](https://nextjs.org/docs/app/guides/authentication)
 - [Drizzle migrations](https://orm.drizzle.team/docs/migrations)
+
+## 第六阶段公开展示
+
+公开页、Metadata、筛选项与 sitemap 的照片读取统一通过 services/public-photos。SQL 分页/排序/组合筛选和白名单 DTO；标签批量关联，地点用连接注册的确定性 normalize_location 函数统一历史文本。已有索引足够，不新增 Migration。公开页 force-dynamic，仅 React cache 请求内去重；审核 revalidatePath 覆盖档案/详情/标签/sitemap，与 Cloudflare purge 分开。next/image unoptimized 直接读取既有公开 WebP，网格保留比例，客户端边界仅图片加载状态与原生 dialog。详见 [公开影像指南](gallery.md)。

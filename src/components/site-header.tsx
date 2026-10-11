@@ -25,8 +25,8 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="主导航" className="flex items-center gap-2 sm:gap-5">
           <Link
-            href="/"
-            className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+            href="/archive"
+            className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center text-sm transition-colors"
           >
             影像档案
           </Link>

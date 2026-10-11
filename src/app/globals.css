@@ -128,3 +128,24 @@
     @apply font-sans;
   }
 }
+
+@layer base {
+  a,
+  button,
+  select {
+    @apply focus-visible:outline-2 focus-visible:outline-offset-4;
+  }
+  h1,
+  h2,
+  p,
+  dd {
+    overflow-wrap: anywhere;
+  }
+  select {
+    min-width: 0;
+    max-width: 100%;
+  }
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+}
