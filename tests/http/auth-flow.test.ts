@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +12,7 @@ import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { openDatabase } from "../../src/server/db/connection";
+import { photos, submissions } from "../../src/server/db/schema";
 import { session } from "../../src/server/db/auth-schema";
 import { createArchiveAuth } from "../../src/server/auth/options";
 
@@ -83,6 +86,7 @@ before(
           HOSTNAME: "127.0.0.1",
           PORT: String(port),
           DATABASE_PATH: databasePath,
+          STORAGE_DRIVER: "local",
           BETTER_AUTH_URL: origin,
           BETTER_AUTH_SECRET: secret,
         },
@@ -248,5 +252,104 @@ test(
     });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /BETTER_AUTH_SECRET/);
+  },
+);
+
+test("private preview and approved public derivatives are served by the real HTTP routes", async () => {
+  const id = randomUUID();
+  const originalKey = `originals/${id}/original.png`,
+    previewKey = `previews/${id}/preview.webp`;
+  const displayKey = `photos/${id}/display.webp`,
+    thumbnailKey = `photos/${id}/thumbnail.webp`;
+  const original = await sharp({
+    create: { width: 160, height: 100, channels: 3, background: "#34664a" },
+  })
+    .png()
+    .toBuffer();
+  const derivative = await sharp(original).webp().toBuffer();
+  for (const [scope, key, bytes] of [
+    ["private", originalKey, original],
+    ["private", previewKey, derivative],
+    ["public", displayKey, derivative],
+    ["public", thumbnailKey, derivative],
+  ] as const) {
+    const target = join(directory, "storage", scope, key);
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, bytes);
+  }
+  const batch = db
+    .insert(submissions)
+    .values({ attribution: "Generated HTTP fixture" })
+    .returning()
+    .get();
+  db.insert(photos)
+    .values({
+      id,
+      submissionId: batch.id,
+      title: "Generated HTTP image",
+      originalKey,
+      previewKey,
+      displayKey,
+      thumbnailKey,
+      mimeType: "image/png",
+      byteSize: original.length,
+    })
+    .run();
+  const previewURL = `/api/admin/photos/${id}/preview`;
+  assert.equal((await get(previewURL)).status, 401);
+  const visitor = await signIn("visitor@example.invalid");
+  assert.equal((await get(previewURL, visitor)).status, 403);
+  const admin = await signIn();
+  const result = await get(`${previewURL}?key=${originalKey}`, admin);
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("content-type"), "image/webp");
+  assert.equal(result.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(Buffer.from(await result.arrayBuffer()), derivative);
+  assert.equal(
+    (await get(`/api/admin/photos/${randomUUID()}/preview`, admin)).status,
+    404,
+  );
+  for (const path of [
+    `/api/images/${displayKey}`,
+    `/api/images/${originalKey}`,
+    `/api/images/${previewKey}`,
+    `/data/storage/private/${originalKey}`,
+    `/api/images/photos/%2e%2e%2fprivate/secret.webp`,
+  ])
+    assert.equal((await get(path)).status, 404);
+  db.update(photos)
+    .set({ status: "approved", publishedAt: new Date() })
+    .where(eq(photos.id, id))
+    .run();
+  const visible = await get(`/api/images/${displayKey}`);
+  assert.equal(visible.status, 200);
+  assert.deepEqual(Buffer.from(await visible.arrayBuffer()), derivative);
+  db.update(photos).set({ status: "hidden" }).where(eq(photos.id, id)).run();
+  assert.equal((await get(`/api/images/${displayKey}`)).status, 404);
+  await post("/api/auth/sign-out", {}, admin);
+  await post("/api/auth/sign-out", {}, visitor);
+});
+
+test(
+  "R2 mode fails startup without credentials instead of falling back to local",
+  { skip: development },
+  () => {
+    const result = spawnSync(process.execPath, ["scripts/start.mjs"], {
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        PORT: "0",
+        HOSTNAME: "127.0.0.1",
+        DATABASE_PATH: databasePath,
+        BETTER_AUTH_URL: origin,
+        BETTER_AUTH_SECRET: secret,
+        STORAGE_DRIVER: "r2",
+        R2_ACCOUNT_ID: "",
+      },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /R2_ACCOUNT_ID/);
   },
 );

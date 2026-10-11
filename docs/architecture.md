@@ -6,16 +6,17 @@ Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例�
 
 页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
-| 模块                                                   | 状态                                 |
-| ------------------------------------------------------ | ------------------------------------ |
-| `server/db`                                            | 业务表、认证表、连接与增量 Migration |
-| `services/public-photos`                               | 只读获批且完整可公开的记录，显式 DTO |
-| `auth/options` / `auth/index`                          | Better Auth 1.7.7 配置 / 服务端实例  |
-| `auth/admin` / `auth/pages`                            | 会话与角色检查 / 页面跳转            |
-| `auth/http`                                            | HTTP 认证接口白名单与敏感字段过滤    |
-| `auth/cli` / `scripts/admin-init`                      | 官方 CLI 配置与安全初始化包装        |
-| `storage/r2`、`images/processor`、`security/turnstile` | 仅预留接口，明确抛出未实现错误       |
-| `services/submissions`、`services/moderation`          | 仅预留业务接口，不写入数据           |
+| 模块                                            | 状态                                               |
+| ----------------------------------------------- | -------------------------------------------------- |
+| `server/db`                                     | 业务表、认证表、连接与增量 Migration               |
+| `services/public-photos`                        | 只读获批且完整可公开的记录，显式 DTO               |
+| `auth/options` / `auth/index`                   | Better Auth 1.7.7 配置 / 服务端实例                |
+| `auth/admin` / `auth/pages`                     | 会话与角色检查 / 页面跳转                          |
+| `auth/http`                                     | HTTP 认证接口白名单与敏感字段过滤                  |
+| `auth/cli` / `scripts/admin-init`               | 官方 CLI 配置与安全初始化包装                      |
+| `storage` / `images` / `services/image-service` | 隔离 Adapter、格式验证、Sharp、发布/撤回及恢复日志 |
+| `security/turnstile`                            | 仍为预留接口，明确未实现                           |
+| `services/submissions`、`services/moderation`   | 仅预留业务接口，不写入数据                         |
 
 ## 认证架构与数据流
 
@@ -64,7 +65,7 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 
 ## 数据模型与兼容性
 
-业务表保持原样：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
+业务表基础结构保留，第三阶段增量增加 photos.preview_key 和 image_operations：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
 
 新增认证表基于 1.7.7 官方 CLI 生成，并经 Drizzle Migration：
 
@@ -76,11 +77,25 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 
 新 `0001` 只 CREATE 认证表/索引，保留 `0000` 和全部业务数据；不重建业务表。当前实际 `photos` **没有 `reviewed_by` 字段**，日志 `admin_id` 为 UUID 兼容的文本但没有用户外键。认证 ID 使用 UUID 文本，与未来审核关联兼容。后续审核阶段用新的增量迁移添加可空 `photos.reviewed_by` 外键，并先评估历史日志再建立用户关联，不能强行破坏历史记录。本阶段没有审核写入口。
 
-## 后续图片流与隐私
+## 图片基础设施与隐私
 
-匿名投稿 → 文件大小/MIME/签名/像素验证 → 单实例限流和 Turnstile → 私有 R2 原图 → SQLite 批次与 pending → 管理员私有预览/审核 → Sharp 去 EXIF → 获批衍生图 → SQLite 发布状态与审核日志 → 公开查询。
+现有 server/storage 和 server/images 已实现，lib 保持客户端工具用途，凭据与文件 IO 不进入浏览器。统一 ObjectStorage 的固定 scope 包含 put/get/head/delete/exists；local 根目录独立于 Next 静态 public，R2 两桶共享一个 S3Client。服务入口都有 server-only。配置只在服务器读取，开发默认 local，生产未设置 driver 默认 r2，缺凭据拒绝启动，不静默回退。
 
-原图和待审核图片始终私有；仅获批展示图/缩略图可进入公开区。审核 URL 短期签名且鉴权，Key 用 UUID，不含联系方式。隐藏/拒绝需撤销公开资源与 CDN 缓存，不能只改数据库。R2 和 SQLite 无原子事务，发布与清理需要补偿、幂等和重试测试。
+Key 为 UUID + originals/previews/photos 的固定布局；原图扩展名匹配实际编码，私有/公开前缀不混用。LocalStorage 原子文件写入与条件创建，检查 Key、真实路径和符号链接；R2 条件写入、有限重试、下载大小上限、类型安全错误。不提供游客写存储的 HTTP 入口。
+
+Sharp 验证签名、格式、10 MiB、24MP/16000px、安全完整解码；处理并发 2、队列最多 8。原图保存原始字节；私有预览 1200px，展示 2000px，缩略 600px，全为 WebP、保持比例、不放大、autoOrient、移除 EXIF/GPS。基础元数据只返回编码尺寸、格式/MIME、大小和可空 orientation，不解析摄影 EXIF，不覆盖日期。参数统一配置。
+
+新增 preview_key（可空、唯一）复用原有 byte_size（没有另建 file_size）。image_operations 保存操作 UUID、photoId、action、state、scope/Key JSON、errorCode、时间及状态索引，不挂照片外键，允许业务记录建立前的文件恢复。0002 只新增表/索引及 ALTER ADD，不删除业务表或修改 0000/0001。
+
+ImageService 不更新照片业务状态。publishImage 验证真实管理员后生成衍生图，再次鉴权，记录 writing 后条件写入，成功返回 awaiting_commit receipt。未来业务层此时事务提交 approved/Key/时间/日志，成功 confirmPublication，失败 recoverOperation(remove)。上传失败清理本次所有可能新建的对象；清理失败持久化 cleanup_failed，保留安全可追踪日志。固定 Key + hash 复用相同内容，冲突不覆盖旧公开资源；同 UUID 单进程串行。complete 也可表示补偿已完成，需结合 action/errorCode 判断，不能当作照片获批状态。
+
+进程中断后 writing/awaiting_commit 必须先检查业务数据库，再显式 keep/remove，不能自动删除可能已提交的图。R2 文件写入与 SQLite 无原子提交，授权上传至业务提交之间存在短暂可见窗口，本阶段只提供底层协议；本地只读路由额外校验数据库 approved。完整恢复和运维契约见 [storage.md](storage.md)。
+
+GET /api/admin/photos/[id]/preview 先 requireAdmin 再查照片匹配的私有 preview_key，返回 WebP、private no-store、Vary Cookie；未登录 401、非管理员 403、无预览 404。GET /api/images/[...key] 仅 local，严格 public Key 和数据库 approved 条件；R2 URL 从固定 HTTPS 自定义 origin 生成。原图/待审核图片不使用公开 URL。
+
+unpublish 仅删公开图，delete 清全部文件，均幂等、不改业务表；以后业务先隐藏，再删除对象和撤销缓存。60 秒公开缓存不保证紧急撤回，CDN purge 尚未实现，绝不能宣称删除对象等于全网缓存消失。
+
+下一阶段匿名投稿仍需请求体限制、文件验证、可靠防刷、Turnstile 与授权/隐私说明；本阶段没有投稿或审核写入入口。
 
 ## 部署
 

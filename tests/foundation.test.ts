@@ -21,8 +21,8 @@ import {
 } from "../src/server/services/public-photos";
 import { GET as getAdminPhotos } from "../src/app/api/admin/photos/route";
 import { POST as submit } from "../src/app/api/submissions/route";
-import { getR2Storage } from "../src/server/storage/r2";
-import { processApprovedPhoto } from "../src/server/images/processor";
+import { readStorageEnvironment } from "../src/server/storage/environment";
+import { validateImage } from "../src/server/images/processor";
 import { verifyTurnstile } from "../src/server/security/turnstile";
 
 const directory = mkdtempSync(join(tmpdir(), "ahau-foundation-"));
@@ -174,11 +174,11 @@ test("administrator API denies access and submission endpoint reports unavailabl
   assert.equal(submit().status, 501);
 });
 
-test("reserved external modules never pretend to succeed without implementation", async () => {
-  assert.throws(getR2Storage, /not implemented/);
-  await assert.rejects(
-    processApprovedPhoto(Buffer.from("not an image")),
-    /not implemented/,
+test("storage configuration and invalid images fail safely; Turnstile stays unavailable", async () => {
+  assert.throws(
+    () => readStorageEnvironment({ STORAGE_DRIVER: "r2" }),
+    /R2_ACCOUNT_ID/,
   );
+  await assert.rejects(validateImage(Buffer.from("not an image")), /仅支持/);
   await assert.rejects(verifyTurnstile("not-a-token"), /not implemented/);
 });

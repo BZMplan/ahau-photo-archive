@@ -51,6 +51,7 @@ export const photos = sqliteTable(
       .notNull()
       .default("pending"),
     originalKey: text("original_key").notNull(),
+    previewKey: text("preview_key"),
     displayKey: text("display_key"),
     thumbnailKey: text("thumbnail_key"),
     mimeType: text("mime_type").notNull(),
@@ -72,6 +73,7 @@ export const photos = sqliteTable(
     index("photos_status_taken_idx").on(table.status, table.takenAt),
     index("photos_status_location_idx").on(table.status, table.location),
     uniqueIndex("photos_original_key_unique").on(table.originalKey),
+    uniqueIndex("photos_preview_key_unique").on(table.previewKey),
     uniqueIndex("photos_display_key_unique").on(table.displayKey),
     uniqueIndex("photos_thumbnail_key_unique").on(table.thumbnailKey),
     check(
@@ -86,6 +88,35 @@ export const photos = sqliteTable(
     check(
       "photos_approved_assets_check",
       sql`${table.status} != 'approved' or (${table.displayKey} is not null and ${table.thumbnailKey} is not null and ${table.publishedAt} is not null)`,
+    ),
+  ],
+);
+
+// Durable recovery metadata; file services never update photos or review status.
+export const imageOperations = sqliteTable(
+  "image_operations",
+  {
+    id: uuid(),
+    photoId: text("photo_id").notNull(),
+    action: text("action", {
+      enum: ["publish", "unpublish", "delete"],
+    }).notNull(),
+    state: text("state", {
+      enum: ["writing", "awaiting_commit", "cleanup_failed", "complete"],
+    }).notNull(),
+    objects: text("objects", { mode: "json" })
+      .$type<{ scope: "private" | "public"; key: string }[]>()
+      .notNull(),
+    errorCode: text("error_code"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("image_operations_state_created_idx").on(
+      table.state,
+      table.createdAt,
     ),
   ],
 );

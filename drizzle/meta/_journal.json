@@ -15,6 +15,13 @@
       "when": 1791709115842,
       "tag": "0001_useful_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791713083450,
+      "tag": "0002_green_blindfold",
+      "breakpoints": true
     }
   ]
 }

@@ -4,8 +4,11 @@ export async function register() {
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
     const { readAuthEnvironment } = await import("./server/auth/environment");
+    const { readStorageEnvironment } =
+      await import("./server/storage/environment");
     try {
       readAuthEnvironment();
+      readStorageEnvironment();
     } catch (error) {
       console.error(
         error instanceof Error

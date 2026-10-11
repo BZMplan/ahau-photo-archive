@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { openDatabase } from "../src/server/db/connection";
-import { moderationLogs, photos, submissions } from "../src/server/db/schema";
+import { moderationLogs, submissions } from "../src/server/db/schema";
 import { user } from "../src/server/db/auth-schema";
 
 test("additive authentication migration preserves existing business records and review history", () => {
@@ -42,17 +42,25 @@ test("additive authentication migration preserves existing business records and 
       })
       .returning()
       .get();
-    const photo = db
-      .insert(photos)
-      .values({
-        submissionId: batch.id,
-        title: "Existing photograph",
-        originalKey: `private/${randomUUID()}`,
-        mimeType: "image/jpeg",
-        byteSize: 100,
-      })
-      .returning()
-      .get();
+    // Use the historical column list: today's Drizzle insert includes preview_key.
+    const photo = { id: randomUUID() };
+    sqlite
+      .prepare(
+        "INSERT INTO photos (id, submission_id, title, original_key, mime_type, byte_size, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        photo.id,
+        batch.id,
+        "Existing photograph",
+        `private/${randomUUID()}`,
+        "image/jpeg",
+        100,
+        Date.now(),
+        Date.now(),
+      );
+    const beforePhoto = sqlite
+      .prepare("SELECT * FROM photos WHERE id = ?")
+      .get(photo.id);
     const log = db
       .insert(moderationLogs)
       .values({
@@ -68,7 +76,15 @@ test("additive authentication migration preserves existing business records and 
     migrate(db, { migrationsFolder: "drizzle" });
     migrate(db, { migrationsFolder: "drizzle" });
     assert.deepEqual(db.select().from(submissions).all(), [batch]);
-    assert.deepEqual(db.select().from(photos).all(), [photo]);
+    const upgradedPhoto = sqlite
+      .prepare<[string], Record<string, unknown>>(
+        "SELECT * FROM photos WHERE id = ?",
+      )
+      .get(photo.id);
+    assert.equal(upgradedPhoto?.preview_key, null);
+    const { preview_key: preview, ...preservedPhoto } = upgradedPhoto!;
+    void preview;
+    assert.deepEqual(preservedPhoto, beforePhoto);
     assert.deepEqual(db.select().from(moderationLogs).all(), [log]);
     assert.deepEqual(db.select().from(user).all(), []);
     assert.equal(
@@ -77,7 +93,7 @@ test("additive authentication migration preserves existing business records and 
           "SELECT count(*) AS count FROM __drizzle_migrations",
         )
         .get()?.count,
-      2,
+      journal.entries.length,
     );
   } finally {
     sqlite.close();

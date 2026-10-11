@@ -15,6 +15,8 @@ nextEnv.loadEnvConfig(root);
 process.env.DATABASE_PATH = resolve(
   process.env.DATABASE_PATH || "./data/archive.sqlite",
 );
+if (process.env.LOCAL_STORAGE_PATH)
+  process.env.LOCAL_STORAGE_PATH = resolve(process.env.LOCAL_STORAGE_PATH);
 process.env.HOSTNAME ||= "127.0.0.1";
 cpSync(join(root, ".next/static"), join(standalone, ".next/static"), {
   recursive: true,

@@ -2,7 +2,7 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础与管理员认证；投稿、图片和审核仍为骨架，未实现交互要标注并禁用。业务开发前读 `docs/architecture.md` 的数据流与权限边界；变更认证或部署时先读 README 的初始化与环境说明，确定阶段任务时读 `docs/roadmap.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证与图片基础设施；投稿、审核与图片 UI 未开放。业务开发前读 `docs/architecture.md` 的权限边界；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md` 的一致性协议与运维限制；认证/部署变更读 README，确定阶段任务时读 `docs/roadmap.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、R2、Sharp、Turnstile、Docker。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
@@ -46,15 +46,18 @@
 
 ## 图片与隐私
 
-- 原图和待审核资源始终私有，原图默认不公开。
-- 只有获批照片生成并发布展示图/缩略图，公开图去 EXIF；公开 DTO 不含对象 Key 和联系方式。
-- 审核预览鉴权，短期签名 URL 不记日志或长期保存；Key 用内部 UUID。
-- 隐藏/拒绝撤销公开访问及 CDN 缓存；跨 SQLite/R2 写入设计补偿与幂等重试。
+- 原图和待审核资源始终私有，原图保留原字节、不可公开访问；待审核图片不能进入公开 Bucket。公开桶只写管理员授权的去元数据衍生图，公开 DTO 不含对象 Key 和联系方式。
+- 图片输入必须服务器验证实际编码、大小、像素和完整解码；统一用 `ImageService`，对象操作统一经 `ObjectStorage` Adapter，参数集中于 images/config.ts。不能直接公开复制原图或相信浏览器 MIME/扩展名。
+- Key 只由服务器规范生成 UUID 路径，原图扩展名匹配编码，不能使用用户文件名或请求任意 Key。数据库复用 byte_size，preview_key 私有；只存 Key，不存带签名的临时 URL。
+- 私有图片 API 先 requireAdmin 再查 photoId/匹配 Key，no-store，401/403/404；禁止直接静态服务私有目录。local 公开路由还要验证 approved，防路径/符号链接穿越；不开放游客上传、发布或删除接口。
+- 发布必须按 storage.md 协议：写入持久操作记录，两个公开文件成功后业务事务才能 approved；提交后确认 receipt，失败补偿。image_operations 中断/清理失败可追踪，恢复先核对业务状态，不能自动删除可能已提交的对象。
+- 撤回只清公开图、保留原图；永久删除仍保留业务历史。删除幂等，隐藏/拒绝还需撤销 CDN 缓存；不能宣称 R2 删除等于即时全网撤回，当前无 purge 实现。
+- local/r2 显式切换，生产缺 R2 配置要失败、不能静默回退；密钥只读服务端环境、禁止硬编码。测试用临时目录/数据库和 SDK mock，不连接真实云或填入开发/生产测试照片。
 - 未接入功能不调用真实 Cloudflare API、不模拟成功。凭据在服务端环境变量，`.env.example` 只含空值及非敏感示例，秘密不使用 `NEXT_PUBLIC_`。
 
 ## 完成检查
 
-提交前 `pnpm check` 和 `pnpm build`；数据库变更还验证首次、重复与旧库升级，Docker 迁移脚本通过 `pnpm db:compile`。认证改动在 build 后运行 `pnpm test:auth-flow`，覆盖真实后台路由、登录/退出、401/403和过期。按改动验证隐私隔离、错误状态、响应式布局和主题。保留未实现功能明确的禁用/拒绝行为。
+提交前 `pnpm check` 和 `pnpm build`（check 含 Vitest）；数据库变更验证首次、重复与旧库升级，`pnpm db:compile`。认证或图片路由变更在 build 后运行 `pnpm test:auth-flow`。存储变更覆盖发布失败/清理失败/重启恢复、原图不变、方向/元数据、路径隔离与权限。确认 standalone 未追踪数据/环境/测试文件。保留未实现功能明确的拒绝行为，报告未执行的真实云/浏览器检查。
 
 更新中文文档，报告通过和未能执行的检查。审阅 staged diff，确认没有数据库、密钥、上传或构建产物；任务未要求时不建远程仓库或推送。
 

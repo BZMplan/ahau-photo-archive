@@ -14,13 +14,15 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "test": "tsx --conditions=react-server --test tests/*.test.ts",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm test:images",
     "db:compile": "tsc -p tsconfig.migrations.json",
     "admin:init": "tsx scripts/admin-init.ts",
     "auth:secret": "auth secret",
     "auth:generate": "auth generate --config src/server/auth/cli.ts --output src/server/db/auth-schema.ts --yes",
     "auth:check": "auth check schema --config src/server/auth/cli.ts",
-    "test:auth-flow": "tsx --test tests/http/*.test.ts"
+    "test:auth-flow": "tsx --test tests/http/*.test.ts",
+    "test:images": "vitest run",
+    "storage:check": "tsx --conditions=react-server scripts/check-storage.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
@@ -58,7 +60,8 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.3"
   },
   "packageManager": "pnpm@12.10.1",
   "engines": {
