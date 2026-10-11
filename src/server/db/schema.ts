@@ -1,0 +1,162 @@
+import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+
+export const photoStatuses = [
+  "pending",
+  "approved",
+  "rejected",
+  "hidden",
+] as const;
+const uuid = () => text("id").primaryKey().$defaultFn(randomUUID);
+const createdAt = () =>
+  integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date());
+
+export const submissions = sqliteTable(
+  "submissions",
+  {
+    id: uuid(),
+    attribution: text("attribution"),
+    contact: text("contact"),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [index("submissions_submitted_at_idx").on(table.submittedAt)],
+);
+
+export const photos = sqliteTable(
+  "photos",
+  {
+    id: uuid(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    location: text("location"),
+    // Date-only value avoids inventing a timezone or precision for historical photos.
+    takenAt: text("taken_at"),
+    status: text("status", { enum: photoStatuses })
+      .notNull()
+      .default("pending"),
+    originalKey: text("original_key").notNull(),
+    displayKey: text("display_key"),
+    thumbnailKey: text("thumbnail_key"),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => [
+    index("photos_submission_idx").on(table.submissionId),
+    index("photos_status_published_idx").on(table.status, table.publishedAt),
+    index("photos_status_taken_idx").on(table.status, table.takenAt),
+    index("photos_status_location_idx").on(table.status, table.location),
+    uniqueIndex("photos_original_key_unique").on(table.originalKey),
+    uniqueIndex("photos_display_key_unique").on(table.displayKey),
+    uniqueIndex("photos_thumbnail_key_unique").on(table.thumbnailKey),
+    check(
+      "photos_status_check",
+      sql`${table.status} in ('pending', 'approved', 'rejected', 'hidden')`,
+    ),
+    check("photos_size_check", sql`${table.byteSize} > 0`),
+    check(
+      "photos_dimensions_check",
+      sql`(${table.width} is null or ${table.width} > 0) and (${table.height} is null or ${table.height} > 0)`,
+    ),
+    check(
+      "photos_approved_assets_check",
+      sql`${table.status} != 'approved' or (${table.displayKey} is not null and ${table.thumbnailKey} is not null and ${table.publishedAt} is not null)`,
+    ),
+  ],
+);
+
+export const tags = sqliteTable(
+  "tags",
+  {
+    id: uuid(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("tags_name_unique").on(table.name),
+    uniqueIndex("tags_slug_unique").on(table.slug),
+  ],
+);
+
+export const photoTags = sqliteTable(
+  "photo_tags",
+  {
+    photoId: text("photo_id")
+      .notNull()
+      .references(() => photos.id, { onDelete: "cascade" }),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.photoId, table.tagId] }),
+    index("photo_tags_tag_idx").on(table.tagId, table.photoId),
+  ],
+);
+
+export const moderationLogs = sqliteTable(
+  "moderation_logs",
+  {
+    id: uuid(),
+    photoId: text("photo_id")
+      .notNull()
+      .references(() => photos.id, { onDelete: "restrict" }),
+    // Better Auth schema and its FK will be introduced with administrator provisioning.
+    adminId: text("admin_id").notNull(),
+    action: text("action", {
+      enum: ["approve", "reject", "hide", "restore", "edit"],
+    }).notNull(),
+    fromStatus: text("from_status", { enum: photoStatuses }).notNull(),
+    toStatus: text("to_status", { enum: photoStatuses }).notNull(),
+    note: text("note"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("moderation_logs_photo_created_idx").on(
+      table.photoId,
+      table.createdAt,
+    ),
+    index("moderation_logs_admin_created_idx").on(
+      table.adminId,
+      table.createdAt,
+    ),
+    check(
+      "moderation_logs_action_check",
+      sql`${table.action} in ('approve', 'reject', 'hide', 'restore', 'edit')`,
+    ),
+    check(
+      "moderation_logs_from_status_check",
+      sql`${table.fromStatus} in ('pending', 'approved', 'rejected', 'hidden')`,
+    ),
+    check(
+      "moderation_logs_to_status_check",
+      sql`${table.toStatus} in ('pending', 'approved', 'rejected', 'hidden')`,
+    ),
+  ],
+);

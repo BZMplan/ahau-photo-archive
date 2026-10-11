@@ -1,0 +1,13 @@
+services:
+  archive:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_PATH: /app/data/archive.sqlite
+    volumes:
+      - archive-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  archive-data:
