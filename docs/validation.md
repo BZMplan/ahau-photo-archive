@@ -71,7 +71,7 @@ React 源码检查确认客户端边界集中于主题和错误重试，表单�
 - `pnpm test:auth-flow`：生产 standalone 认证、私有预览、公开状态门禁及 R2 缺配置回归 8 项通过。
 - `pnpm storage:check`：第三阶段 local 存储探测继续通过；投稿不会调用公开存储。
 
-失败补偿使用真实 ImageService 和临时存储测试；中途文件失败、数据库事务失败、清理失败记录和重试状态由服务单元测试覆盖。真实浏览器拖拽体验、真实 Turnstile Challenge、反向代理 body limit、Cloudflare Tunnel / R2 权限及 CDN 尚未执行；这些需要本地浏览器或维护者配置的外部环境。
+失败补偿使用真实 ImageService 和临时存储测试；中途文件失败、数据库事务失败、清理失败记录和重试状态由服务单元测试覆盖。真实浏览器拖拽体验、真实 Turnstile Challenge、反向代理 body limit、真实 R2 权限及 CDN 尚未执行；这些需要本地浏览器或维护者配置的外部环境。
 
 ## 第三阶段：图片存储与处理
 

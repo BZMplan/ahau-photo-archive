@@ -12,7 +12,7 @@
 - `authorName` 1–50 字符；照片 `title` 1–100；`description` 0–1000；`location` 0–100；`message` 0–1000；邮箱最多 254 且必须是有效格式。
 - `takenAt` 是可空的合法 `YYYY-MM-DD`，不能晚于当前日期；它不会被投稿时间覆盖。
 
-请求体上限首先检查可信的 `Content-Length`，解析 `formData()` 后仍检查每个 File 和总文件字节。缺少 Content-Length 的请求不会绕过文件检查。生产部署还应在 Cloudflare Tunnel 或前置反向代理设置至少相同的 body limit，因为 Next.js 的 `formData()` 解析本身不是流式上传防火墙。
+请求体上限首先检查可信的 `Content-Length`，解析 `formData()` 后仍检查每个 File 和总文件字节。缺少 Content-Length 的请求不会绕过文件检查。生产部署还应在外部反向代理设置与 52 MiB 投稿请求上限兼容的 body limit，因为 Next.js 的 `formData()` 解析本身不是流式上传防火墙。
 
 ## 请求格式
 

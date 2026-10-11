@@ -8,7 +8,7 @@
 
 ## 技术栈
 
-TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；Docker 单实例部署，未来通过 Cloudflare Tunnel 提供服务。
+TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；使用 Docker Compose 单实例部署，由外部 HTTP/HTTPS 反向代理提供公网入口。
 
 精确版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 由 `packageManager` 固定。`pnpm-workspace.yaml` 仅配置依赖构建许可，本项目不是 Monorepo。
 
@@ -140,15 +140,15 @@ docs/                           # 中文架构、路线图、验证记录
 data/                           # 持久化数据，不提交
 ```
 
-## Docker 与未来 Tunnel
+## Docker Compose 部署
 
 ```bash
 docker compose --env-file .env.local up --build -d
 docker compose logs -f archive
 ```
 
-Compose 要求传入认证配置和所选驱动配置，密钥仅运行时传递，不写入镜像。`STORAGE_DRIVER=local` 将图片存入同一持久卷的 `/app/data/storage`；R2 模式需完整 R2 配置，默认要求 r2，见存储指南。容器非 root，启动先迁移；数据库在 `archive-data` 命名卷，端口绑定 `127.0.0.1:3000`。首次初始化需要在可信本地终端使用源码与官方 CLI 访问同一数据库；精简运行镜像不包含开发 CLI，不能对另一份数据库创建账号后期待容器自动同步。
+可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入同一持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key。`NEXT_PUBLIC_TURNSTILE_SITE_KEY` 会被 Next.js 编入客户端构建；当前 Dockerfile 尚未传入构建时 Site Key，第七阶段必须补齐并验证容器中的投稿 Widget，单纯在 Compose 运行时设置该变量不足以完成生产配置。容器非 root，启动先迁移；SQLite 数据库在 `archive-data` 命名卷，默认端口绑定 `127.0.0.1:3000`。首次初始化需要在可信本地终端使用源码与官方 CLI 访问同一数据库；精简运行镜像不包含开发 CLI，不能对另一份数据库创建账号后期待容器自动同步。
 
-通过 Tunnel 上线时将 URL 设置为真实外部 HTTPS origin；浏览器在这个 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / X-Forwarded-* 推断认证域名。入口保持私有或 loopback，在配置可信代理前不启用 IP 头。当前没有创建 Tunnel，也没有调用 Cloudflare API。
+公网访问由用户自行选择和配置的外部 HTTP/HTTPS 反向代理提供；本项目不管理代理或 TLS 证书。代理终止 HTTPS，通过 HTTP 转发到容器，并限制对应用端口的直接访问。将 `BETTER_AUTH_URL` 设置为真实公开 HTTPS origin；这也是 Next.js 公开页面 URL 与 Turnstile hostname 校验的来源，浏览器在此 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / `X-Forwarded-*` 推断认证域名；仅在入口不可绕过、代理剥离并重写来源头后才配置 `TRUSTED_PROXY_IP_HEADER`。代理需设置与 52 MiB 投稿请求上限兼容的请求体限制和适合图片处理的 HTTP 超时；具体配置由代理维护者负责。无需 Cloudflare Tunnel 或 Zero Trust。
 
 `docker compose down -v` 删除数据卷。备份使用 SQLite 在线备份或停服务后完整复制数据目录。构建不需要数据库、认证密钥或 R2 凭据。详情见 [架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[验证记录](docs/validation.md)、[开发约定](AGENTS.md)。
