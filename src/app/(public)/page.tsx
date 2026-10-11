@@ -44,13 +44,11 @@ export default function HomePage() {
               {photos.length ? `最近 ${photos.length} 张` : "0 张"}
             </Badge>
           </div>
-          <p className="text-muted-foreground text-xs">
-            时间 / 地点 / 标签筛选 · 即将开放
-          </p>
+          <p className="text-muted-foreground text-xs">已审核公开影像</p>
         </div>
         <PhotoGrid photos={photos} />
         <p className="text-muted-foreground mt-7 text-xs leading-6">
-          档案正在筹备中。投稿与图片展示将在后续阶段开放。
+          所有公开影像均经过管理员审核，原图始终保存在私有存储。
         </p>
       </section>
     </>

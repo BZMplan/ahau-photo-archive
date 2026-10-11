@@ -98,6 +98,7 @@ export const photos = sqliteTable(
     previewKey: text("preview_key"),
     displayKey: text("display_key"),
     thumbnailKey: text("thumbnail_key"),
+    publicationId: text("publication_id"),
     mimeType: text("mime_type").notNull(),
     byteSize: integer("byte_size").notNull(),
     width: integer("width"),
@@ -106,6 +107,9 @@ export const photos = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
     publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    rejectionReason: text("rejection_reason"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date())
@@ -120,6 +124,7 @@ export const photos = sqliteTable(
     uniqueIndex("photos_preview_key_unique").on(table.previewKey),
     uniqueIndex("photos_display_key_unique").on(table.displayKey),
     uniqueIndex("photos_thumbnail_key_unique").on(table.thumbnailKey),
+    uniqueIndex("photos_publication_id_unique").on(table.publicationId),
     check(
       "photos_status_check",
       sql`${table.status} in ('pending', 'approved', 'rejected', 'hidden')`,
@@ -210,6 +215,10 @@ export const moderationLogs = sqliteTable(
     fromStatus: text("from_status", { enum: photoStatuses }).notNull(),
     toStatus: text("to_status", { enum: photoStatuses }).notNull(),
     note: text("note"),
+    metadataChanges: text("metadata_changes", { mode: "json" })
+      .$type<Record<string, { old: string | null; new: string | null }>>()
+      .notNull()
+      .default({}),
     createdAt: createdAt(),
   },
   (table) => [
@@ -233,5 +242,26 @@ export const moderationLogs = sqliteTable(
       "moderation_logs_to_status_check",
       sql`${table.toStatus} in ('pending', 'approved', 'rejected', 'hidden')`,
     ),
+  ],
+);
+
+export const cachePurgeTasks = sqliteTable(
+  "cache_purge_tasks",
+  {
+    id: uuid(),
+    photoId: text("photo_id").notNull(),
+    keys: text("keys", { mode: "json" }).$type<string[]>().notNull(),
+    status: text("status", {
+      enum: ["pending", "purged", "not_configured", "failed"],
+    }).notNull(),
+    errorCode: text("error_code"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("cache_purge_tasks_photo_idx").on(table.photoId, table.createdAt),
+    index("cache_purge_tasks_status_idx").on(table.status, table.updatedAt),
   ],
 );

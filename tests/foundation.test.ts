@@ -20,6 +20,7 @@ import {
   listPublicPhotos,
 } from "../src/server/services/public-photos";
 import { GET as getAdminPhotos } from "../src/app/api/admin/photos/route";
+import { GET as getAdminReviews } from "../src/app/api/admin/reviews/route";
 import { POST as submit } from "../src/app/api/submissions/route";
 import { readStorageEnvironment } from "../src/server/storage/environment";
 import { validateImage } from "../src/server/images/processor";
@@ -99,13 +100,15 @@ test("database rejects invalid status, missing public assets and orphaned photos
 
 test("public queries exclude pending, rejected and hidden photos and private fields", () => {
   const submissionId = batch().id;
+  const approvedId = randomUUID();
   const approved = db
     .insert(photos)
     .values({
       ...photo(submissionId),
+      id: approvedId,
       status: "approved",
-      displayKey: `public/${randomUUID()}`,
-      thumbnailKey: `public/${randomUUID()}`,
+      displayKey: `photos/${approvedId}/display.webp`,
+      thumbnailKey: `photos/${approvedId}/thumbnail.webp`,
       publishedAt: new Date(),
     })
     .returning()
@@ -171,6 +174,14 @@ test("administrator API denies access and submission endpoint reports unavailabl
   assert.deepEqual(await adminResponse.json(), {
     error: { code: "UNAUTHORIZED", message: "请先登录管理员账号。" },
   });
+  assert.equal(
+    (
+      await getAdminReviews(
+        new Request("http://localhost:3000/api/admin/reviews"),
+      )
+    ).status,
+    401,
+  );
   assert.equal(
     (await submit(new Request("http://localhost:3000/api/submissions"))).status,
     400,

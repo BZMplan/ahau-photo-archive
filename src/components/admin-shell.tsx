@@ -56,7 +56,7 @@ export function AdminShell({
         </aside>
         <main id="main-content" className="min-w-0 px-6 py-8 sm:px-10">
           <p className="bg-muted/30 text-muted-foreground mb-8 rounded-md border p-4 text-sm leading-6">
-            管理员认证已接入。投稿审核、照片管理和统计数据将在后续阶段开放。
+            审核操作会生成去元数据的公开衍生图；原图和待审核预览始终保存在私有存储。
           </p>
           {children}
         </main>

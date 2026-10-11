@@ -41,17 +41,18 @@ data/storage/public/photos/{photoId}/thumbnail.webp
 
 业务只通过 ImageService 操作图片，原始 adapter put 仅限可信基础设施/隔离测试和私有探测工具，不暴露请求参数。
 
-| 方法               | 行为                                                                        |
-| ------------------ | --------------------------------------------------------------------------- |
-| saveOriginal       | 内容验证后保留原始字节，返回 UUID、Key 和元数据；相同内容幂等，原图不可替换 |
-| generatePreview    | 从私有原图生成私有 WebP，返回 Key 与处理结果                                |
-| generateVariants   | 生成展示/缩略图 Buffer，不写公开存储                                        |
-| publishImage       | 验证真实管理员 Session，授权上传衍生图，返回 receipt                        |
-| confirmPublication | 业务事务提交后确认操作记录，不更新照片状态                                  |
-| unpublishImage     | 管理员授权，幂等删除公开图，保留原图/预览                                   |
-| deleteImageFiles   | 管理员授权，清理该 UUID 的规范原图、预览及公开图                            |
-| getPrivateImage    | 可信服务端按 photoId 读取对应私有 Key，HTTP 入口先鉴权                      |
-| recoverOperation   | 管理员显式 keep/remove，保留或补偿中断操作                                  |
+| 方法                | 行为                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| saveOriginal        | 内容验证后保留原始字节，返回 UUID、Key 和元数据；相同内容幂等，原图不可替换 |
+| generatePreview     | 从私有原图生成私有 WebP，返回 Key 与处理结果                                |
+| generateVariants    | 生成展示/缩略图 Buffer，不写公开存储                                        |
+| publishImage        | 验证真实管理员 Session，兼容固定 Key 的底层发布 receipt                     |
+| publishImageVersion | 生成 publicationId，写入不可预测版本 Key 并返回 receipt                     |
+| confirmPublication  | 业务事务提交后确认操作记录，不更新照片状态                                  |
+| unpublishImage      | 管理员授权，幂等删除公开图，保留原图/预览                                   |
+| deleteImageFiles    | 管理员授权，清理该 UUID 的规范原图、预览及公开图                            |
+| getPrivateImage     | 可信服务端按 photoId 读取对应私有 Key，HTTP 入口先鉴权                      |
+| recoverOperation    | 管理员显式 keep/remove，保留或补偿中断操作                                  |
 
 Key 由服务器统一生成，原图扩展名匹配编码。浏览器不能指定任意 Bucket/Key。新规则不会自动迁移历史任意命名对象，旧资源将来单独迁移。
 
@@ -77,21 +78,21 @@ Key 由服务器统一生成，原图扩展名匹配编码。浏览器不能指�
 - `GET /api/images/[...key]`：仅 local；public 白名单、photoId 匹配，数据库必须 approved 且两衍生图及 published_at 完整。待审核/隐藏/私有路径/穿越路径 404；R2 模式不代理图片。
 - `getPublicImageUrl(key)`：local 为上述路由，R2 为配置 HTTPS 自定义域名 + 分段编码的规范 Key。核心数据库只保存 Key，不存签名 URL。
 
-尚未接入真实图片 UI，无需改 remotePatterns。未来 Next.js Image 只允许配置的 HTTPS hostname 与 /photos/**，禁止通配任意远程域名。
+管理员审核页面通过 `/api/admin/photos/[id]/preview` 查看私有预览；公开页面使用已批准版本的 display/thumbnail URL。未来 Next.js Image 只允许配置的 HTTPS hostname 与 /photos/**，禁止通配任意远程域名。
 
 ## 发布一致性与恢复
 
-SQLite 与 R2/文件系统没有跨系统原子事务。ImageService 只操作文件和独立日志，未来 PhotoService/ModerationService 负责业务状态及审核事务。
+SQLite 与 R2/文件系统没有跨系统原子事务。ImageService 只操作文件和独立日志，ModerationService 负责业务状态及审核事务。
 
-1. 可信业务获得管理员发布决定后调用 publishImage，函数验证真实 Session；不能用伪造 role 对象授权。处理完再次鉴权，原图不公开。
-2. 两个固定公开 Key 按 hash 检查：相同内容复用，不产生重复对象；不同内容 CONFLICT，保留旧对象。
+1. 可信业务获得管理员发布决定后调用 publishImageVersion，函数验证真实 Session；不能用伪造 role 对象授权。处理完再次鉴权，原图不公开。
+2. 每次发布生成服务端 publicationId，两个公开 Key 使用 `photos/{photoId}/{publicationId}/...`，不会覆盖历史版本。
 3. **上传前**向 SQLite image_operations 保存 writing、operationId、photoId、action、所有本次可能写入的 scope/Key。日志失败不上传。
 4. 两个上传均成功后 awaiting_commit，返回 receipt。业务层此时才能事务更新 approved、published_at、Key 和审核日志；失败不得标成功。
-5. 业务事务成功后 confirmPublication；失败则 recoverOperation(operationId, remove)，补偿本次新对象，不删除已有公开内容或原图。
+5. 业务事务成功后 confirmVersionPublication；失败则按 operationId 补偿本次新对象，不删除已有公开内容或原图。
 6. 上传失败（包括远端已写但响应丢失）清理所有可能创建的 Key；清理失败记录 cleanup_failed，并输出只有操作/照片 ID 与错误码的安全日志。修复后可重新实例化服务显式 remove 重试。
 7. 进程中断留下 writing/awaiting_commit。维护者/未来恢复服务先核对照片状态，再选择 keep/remove；**不能盲目删除，数据库可能已提交**。keep 要求两公开图存在，恢复不会自动更新照片。
 
-同一 UUID 文件操作在单进程内串行；仍是单实例，不支持多写进程的发布协调。重复调用可能增加少量操作记录但不增加重复对象；恢复决定和业务事务之间避免并发发布，扩展前设计持久锁或版本化协议。
+同一 UUID 文件操作在单进程内串行；ModerationService 另外在 SQLite 使用 `WHERE status = expected` 条件更新，跨进程竞争只有一个状态转换成功。重复调用可能增加少量失败补偿记录，但不会覆盖已发布版本；恢复决定和业务事务之间避免并发发布。
 
 R2 公开域名直接访问对象，授权上传与数据库提交间有短暂窗口；上传前管理员授权已校验，失败清理提供补偿，不能声称未提交对象从未短暂可见。本地路由额外按数据库状态阻止访问。
 
@@ -99,7 +100,7 @@ R2 公开域名直接访问对象，授权上传与数据库提交间有短暂�
 
 unpublish 只删公开衍生图；delete 还删私有对象。均不改 photos/审核历史。未来业务层先撤销公开查询，再删除对象并处理缓存；永久删除需档案保留/用户授权政策。
 
-公开响应采用 60 秒缓存并重新验证，不设置 immutable。**删除 R2 对象不保证缓存节点/浏览器立即停止提供旧图。** 紧急撤回需 Cloudflare 单 URL Cache Purge（独立最小权限 Token）、核对所有公开入口，必要时控制台关闭公开域名；已下载副本无法收回。本阶段没有缓存 API，不能保证即时全网撤回。Cloudflare 自定义缓存规则可能覆盖 TTL，需上线前核对。
+公开响应采用 60 秒缓存并重新验证，不设置 immutable。**删除 R2 对象不保证缓存节点/浏览器立即停止提供旧图。** 审核服务撤回后调用 `storage/cache-invalidation.ts`；配置最小权限的 `CLOUDFLARE_ZONE_ID` 与 `CLOUDFLARE_CACHE_PURGE_TOKEN` 时按受影响 URL 执行 Purge by URL，未配置返回 `not_configured`，网络/API 失败返回 `failed`，不会报告成功。紧急撤回仍需核对所有公开入口，必要时控制台人工清理；已下载副本无法收回。Cloudflare 自定义缓存规则可能覆盖 TTL，需上线前核对。
 
 ## Cloudflare 控制台配置
 

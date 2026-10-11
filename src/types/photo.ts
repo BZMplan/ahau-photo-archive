@@ -9,4 +9,9 @@ export interface PublicPhoto {
   takenAt: string | null;
   publishedAt: Date | null;
   attribution: string | null;
+  displayUrl: string;
+  thumbnailUrl: string;
+  width: number | null;
+  height: number | null;
+  tags: string[];
 }

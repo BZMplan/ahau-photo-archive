@@ -22,10 +22,18 @@ export function publicKeys(photoId: string) {
     thumbnailKey: `photos/${photoId}/thumbnail.webp`,
   };
 }
+export function publicationKeys(photoId: string, publicationId: string) {
+  assertPhotoId(photoId);
+  assertPhotoId(publicationId);
+  return {
+    displayKey: `photos/${photoId}/${publicationId}/display.webp`,
+    thumbnailKey: `photos/${photoId}/${publicationId}/thumbnail.webp`,
+  };
+}
 export function assertStorageKey(scope: StorageScope, key: string): void {
   const pattern =
     scope === "public"
-      ? `^photos/${uuidPattern}/(display|thumbnail)\\.webp$`
+      ? `^photos/${uuidPattern}/(?:${uuidPattern}/)?(display|thumbnail)\\.webp$`
       : `^(originals/${uuidPattern}/original\\.(jpg|png|webp)|previews/${uuidPattern}/preview\\.webp)$`;
   if (new RegExp(pattern).exec(key)?.[0] !== key)
     throw new StorageError("INVALID_KEY");

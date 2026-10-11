@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { EmptyState } from "@/components/empty-state";
 import { findPublicPhoto } from "@/server/services/public-photos";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "影像详情" };
@@ -22,10 +21,13 @@ export default async function PhotoPage({
         ← 返回影像档案
       </Link>
       <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_280px]">
-        <EmptyState
-          title="影像展示即将开放"
-          description="图片访问服务将在后续阶段接入。原图默认不公开。"
-        />
+        <div className="bg-muted overflow-hidden rounded-lg">
+          <img
+            src={photo.displayUrl}
+            alt={photo.title}
+            className="max-h-[75vh] w-full object-contain"
+          />
+        </div>
         <div>
           <h1 className="text-2xl font-medium">{photo.title}</h1>
           <p className="text-muted-foreground mt-4 text-sm leading-7">

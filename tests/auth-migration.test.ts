@@ -63,18 +63,21 @@ test("additive authentication migration preserves existing business records and 
     const beforePhoto = sqlite
       .prepare("SELECT * FROM photos WHERE id = ?")
       .get(photo.id);
-    const log = db
-      .insert(moderationLogs)
-      .values({
-        photoId: photo.id,
-        adminId: randomUUID(),
-        action: "reject",
-        fromStatus: "pending",
-        toStatus: "rejected",
-        note: "Existing history",
-      })
-      .returning()
-      .get();
+    const adminId = randomUUID();
+    sqlite
+      .prepare(
+        "INSERT INTO moderation_logs (id, photo_id, admin_id, action, from_status, to_status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        randomUUID(),
+        photo.id,
+        adminId,
+        "reject",
+        "pending",
+        "rejected",
+        "Existing history",
+        Date.now(),
+      );
     migrate(db, { migrationsFolder: "drizzle" });
     migrate(db, { migrationsFolder: "drizzle" });
     const upgradedSubmission = sqlite
@@ -102,10 +105,27 @@ test("additive authentication migration preserves existing business records and 
       )
       .get(photo.id);
     assert.equal(upgradedPhoto?.preview_key, null);
-    const { preview_key: preview, ...preservedPhoto } = upgradedPhoto!;
+    const {
+      preview_key: preview,
+      publication_id: _publicationId,
+      reviewed_by: _reviewedBy,
+      reviewed_at: _reviewedAt,
+      rejection_reason: _rejectionReason,
+      ...preservedPhoto
+    } = upgradedPhoto!;
     void preview;
+    void _publicationId;
+    void _reviewedBy;
+    void _reviewedAt;
+    void _rejectionReason;
     assert.deepEqual(preservedPhoto, beforePhoto);
-    assert.deepEqual(db.select().from(moderationLogs).all(), [log]);
+    const logs = db.select().from(moderationLogs).all();
+    assert.equal(logs.length, 1);
+    assert.equal(
+      logs[0]?.metadataChanges && Object.keys(logs[0].metadataChanges).length,
+      0,
+    );
+    assert.equal(logs[0]?.adminId, adminId);
     assert.deepEqual(db.select().from(user).all(), []);
     assert.equal(
       sqlite

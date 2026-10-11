@@ -1,4 +1,6 @@
-# 第一阶段验证记录
+# 历次验证记录
+
+文档前半部分保留各阶段的历史结果；当前第五阶段的最新结果见文末“第五阶段：审核与发布闭环”。早期条目中的 501 仅表示当时功能尚未开放，不代表当前投稿或审核接口行为。
 
 验证日期：2026-10-11。开发环境为 macOS arm64、Node.js 26.11.1、pnpm 12.10.1；Docker 使用 Node.js 24 的 Linux arm64 镜像。未创建真实密钥或调用 Cloudflare 服务。
 
@@ -152,3 +154,17 @@ Better Auth 在刻意触发失败测试时打印 Invalid password / Origin / cal
 HTTP 测试证明路由、Cookie、服务端判断与数据库状态；没有运行浏览器 JavaScript，不能替代真实按钮点击与布局检查。当前登录加载、防重复、显示/隐藏密码、键盘提交、主题与移动布局经过源码检查，仍需在可访问本地服务的浏览器中人工复核。遵守此前浏览器访问拒绝，没有绕过策略。
 
 真实管理员初始化的最终密码交互未执行；已检查官方 CLI password 类型输入、验证非 TTY 拒绝、测试其使用的官方 createUser/哈希路径。没有用固定或弱密码完成交互演示，也未要求维护者提供真实密码。
+
+## 第五阶段：审核与发布闭环
+
+验证日期：2026-10-11。审核服务测试使用临时 SQLite、LocalStorage、程序生成 PNG 和注入的缓存清除结果；没有调用真实 R2、Cloudflare Zone API 或浏览器。
+
+- `pnpm db:generate`：无 Schema 差异；`pnpm db:migrate`：`0004` 增量字段迁移首次/重复应用通过；`pnpm db:compile` 通过。
+- `pnpm test:images`：7 个 Vitest 文件、83 项测试通过，包含 versioned publication receipt、批准/拒绝、撤回/恢复、原图保留、标签规范化、审核日志、CDN 任务记录、发布确认失败回滚和并发条件更新。
+- `pnpm test`：19 项业务/认证/迁移测试通过；旧库迁移保留历史照片与日志。
+- `pnpm check`：TypeScript、ESLint（仅 Next `<img>` 性能警告）、Prettier 和全部自动化测试通过。
+- `pnpm build`：Next.js 生产构建通过，新增审核列表/详情和所有管理员 Route Handler 均为 Node 动态路由。
+- `pnpm test:auth-flow`：生产 standalone 认证、私有预览、公开状态门禁和真实本地审核发布流程等 9 项回归通过。
+- `git diff --check`：通过；未发现数据库文件、上传图片、构建产物或环境密钥进入变更。
+
+已验证的服务级场景包括：pending 只能批准/拒绝，approved 只能隐藏，hidden 只能恢复；批准生成新的公开版本并保持原图私有；拒绝不写公开桶；撤回移出公开查询且删除公开对象；恢复使用新的 publicationId；编辑标签与 metadata_changes 在同一事务；并发批准只有一个审核日志和一个成功状态。未验证真实 R2 权限、Cloudflare purge、Turnstile/代理链路和浏览器视觉交互，需部署环境配置后单独验收。

@@ -330,6 +330,78 @@ test("private preview and approved public derivatives are served by the real HTT
   await post("/api/auth/sign-out", {}, visitor);
 });
 
+test("real HTTP moderation flow publishes, hides and restores a local photo", async () => {
+  const id = randomUUID();
+  const originalKey = `originals/${id}/original.png`;
+  const previewKey = `previews/${id}/preview.webp`;
+  const original = await sharp({
+    create: { width: 240, height: 160, channels: 3, background: "#784" },
+  })
+    .png()
+    .toBuffer();
+  const preview = await sharp(original).resize(120).webp().toBuffer();
+  for (const [scope, key, bytes] of [
+    ["private", originalKey, original],
+    ["private", previewKey, preview],
+  ] as const) {
+    const target = join(directory, "storage", scope, key);
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, bytes);
+  }
+  const batch = db
+    .insert(submissions)
+    .values({
+      attribution: "HTTP moderation fixture",
+      authorName: "HTTP moderation fixture",
+      consentAccepted: true,
+    })
+    .returning()
+    .get();
+  db.insert(photos)
+    .values({
+      id,
+      submissionId: batch.id,
+      title: "待审核 HTTP 照片",
+      originalKey,
+      previewKey,
+      mimeType: "image/png",
+      byteSize: original.length,
+      width: 240,
+      height: 160,
+    })
+    .run();
+  const admin = await signIn();
+  const pending = await get("/api/admin/reviews?status=pending", admin);
+  assert.equal(pending.status, 200);
+  assert.ok(
+    (await pending.json()).data.items.some(
+      (item: { id: string }) => item.id === id,
+    ),
+  );
+  const approve = await post(`/api/admin/reviews/${id}/approve`, {}, admin);
+  assert.equal(approve.status, 200);
+  const approved = db.select().from(photos).where(eq(photos.id, id)).get();
+  assert.equal(approved?.status, "approved");
+  assert.match(approved?.displayKey ?? "", new RegExp(`photos/${id}/`));
+  assert.equal(
+    (await get(`/api/images/${approved!.displayKey}`, admin)).status,
+    200,
+  );
+  assert.equal((await get(`/api/admin/photos/${id}/logs`, admin)).status, 200);
+  const hidden = await post(`/api/admin/photos/${id}/hide`, {}, admin);
+  assert.equal(hidden.status, 200);
+  assert.equal(
+    db.select().from(photos).where(eq(photos.id, id)).get()?.status,
+    "hidden",
+  );
+  const restored = await post(`/api/admin/photos/${id}/restore`, {}, admin);
+  assert.equal(restored.status, 200);
+  const restoredPhoto = db.select().from(photos).where(eq(photos.id, id)).get();
+  assert.equal(restoredPhoto?.status, "approved");
+  assert.notEqual(restoredPhoto?.publicationId, approved?.publicationId);
+  await post("/api/auth/sign-out", {}, admin);
+});
+
 test(
   "R2 mode fails startup without credentials instead of falling back to local",
   { skip: development },

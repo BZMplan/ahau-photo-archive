@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ImageIcon } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import type { PublicPhoto } from "@/types/photo";
@@ -27,9 +26,12 @@ export function PhotoGrid({ photos }: { photos: PublicPhoto[] }) {
           href={`/photo/${photo.id}`}
           className="group block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4"
         >
-          <div className="bg-muted text-muted-foreground flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-md text-xs">
-            <ImageIcon aria-hidden="true" className="size-5" />
-            图片展示将在下一阶段开放
+          <div className="bg-muted aspect-[4/3] overflow-hidden rounded-md">
+            <img
+              src={photo.thumbnailUrl}
+              alt={photo.title}
+              className="size-full object-cover transition-transform group-hover:scale-[1.02]"
+            />
           </div>
           <h2 className="mt-4 text-sm font-medium group-hover:underline">
             {photo.title}

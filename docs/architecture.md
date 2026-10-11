@@ -6,19 +6,20 @@ Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例�
 
 页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
-| 模块                                            | 状态                                               |
-| ----------------------------------------------- | -------------------------------------------------- |
-| `server/db`                                     | 业务表、认证表、连接与增量 Migration               |
-| `services/public-photos`                        | 只读获批且完整可公开的记录，显式 DTO               |
-| `auth/options` / `auth/index`                   | Better Auth 1.7.7 配置 / 服务端实例                |
-| `auth/admin` / `auth/pages`                     | 会话与角色检查 / 页面跳转                          |
-| `auth/http`                                     | HTTP 认证接口白名单与敏感字段过滤                  |
-| `auth/cli` / `scripts/admin-init`               | 官方 CLI 配置与安全初始化包装                      |
-| `storage` / `images` / `services/image-service` | 隔离 Adapter、格式验证、Sharp、发布/撤回及恢复日志 |
-| `security/turnstile`                            | Siteverify 服务端验证、hostname/action 校验        |
-| `security/submission`                           | Origin 检查、HMAC 来源桶                           |
-| `services/submissions`                          | 批量私有保存、限流、幂等、数据库事务与补偿         |
-| `services/moderation`                           | 仍为预留接口，不写入审核状态                       |
+| 模块                                            | 状态                                                |
+| ----------------------------------------------- | --------------------------------------------------- |
+| `server/db`                                     | 业务表、认证表、连接与增量 Migration                |
+| `services/public-photos`                        | 只读获批且完整可公开的记录，显式 DTO                |
+| `auth/options` / `auth/index`                   | Better Auth 1.7.7 配置 / 服务端实例                 |
+| `auth/admin` / `auth/pages`                     | 会话与角色检查 / 页面跳转                           |
+| `auth/http`                                     | HTTP 认证接口白名单与敏感字段过滤                   |
+| `auth/cli` / `scripts/admin-init`               | 官方 CLI 配置与安全初始化包装                       |
+| `storage` / `images` / `services/image-service` | 隔离 Adapter、格式验证、Sharp、发布/撤回及恢复日志  |
+| `security/turnstile`                            | Siteverify 服务端验证、hostname/action 校验         |
+| `security/submission`                           | Origin 检查、HMAC 来源桶                            |
+| `services/submissions`                          | 批量私有保存、限流、幂等、数据库事务与补偿          |
+| `services/moderation`                           | 状态机、发布补偿、元数据/标签和审计日志事务         |
+| `storage/cache-invalidation`                    | 可选 Cloudflare URL 级缓存清除，显式报告未配置/失败 |
 
 ## 认证架构与数据流
 
@@ -79,13 +80,13 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 - `submission_operations`：匿名批次的 writing / failed / cleanup_failed / complete、请求 ID 和待清理私有对象；用于文件失败补偿，不代表照片已审核。
 - `submission_rate_limits`：HMAC 来源的小时投稿数、日照片数和窗口时间；不保存原始 IP。
 
-新 `0001` 只 CREATE 认证表/索引，保留 `0000` 和全部业务数据；不重建业务表。当前实际 `photos` **没有 `reviewed_by` 字段**，日志 `admin_id` 为 UUID 兼容的文本但没有用户外键。认证 ID 使用 UUID 文本，与未来审核关联兼容。后续审核阶段用新的增量迁移添加可空 `photos.reviewed_by` 外键，并先评估历史日志再建立用户关联，不能强行破坏历史记录。本阶段没有审核写入口。
+新 `0001` 只 CREATE 认证表/索引，后续迁移均保留历史数据。`0004` 为 photos 增加可空 `publication_id`、`reviewed_by`、`reviewed_at`、`rejection_reason`，为 moderation_logs 增加 JSON `metadata_changes`；`0005` 增加轻量 `cache_purge_tasks` 记录撤回后的 CDN 清理状态。日志 `admin_id` 保留文本以兼容历史记录。`publication_id` 与公开 Key 的版本 UUID 一一对应，隐藏时清空当前公开 Key，原图仍保留。认证 ID 使用 UUID 文本，不把会话 Token 或密码写入业务日志。
 
 ## 图片基础设施与隐私
 
 现有 server/storage 和 server/images 已实现，lib 保持客户端工具用途，凭据与文件 IO 不进入浏览器。统一 ObjectStorage 的固定 scope 包含 put/get/head/delete/exists；local 根目录独立于 Next 静态 public，R2 两桶共享一个 S3Client。服务入口都有 server-only。配置只在服务器读取，开发默认 local，生产未设置 driver 默认 r2，缺凭据拒绝启动，不静默回退。
 
-Key 为 UUID + originals/previews/photos 的固定布局；原图扩展名匹配实际编码，私有/公开前缀不混用。LocalStorage 原子文件写入与条件创建，检查 Key、真实路径和符号链接；R2 条件写入、有限重试、下载大小上限、类型安全错误。不提供游客写存储的 HTTP 入口。
+Key 为 UUID + originals/previews/photos 的白名单布局；新公开版本使用 `photos/{photoId}/{publicationId}/display.webp` 和 `thumbnail.webp`，兼容历史固定 Key，不由客户端指定版本。原图扩展名匹配实际编码，私有/公开前缀不混用。LocalStorage 原子文件写入与条件创建，检查 Key、真实路径和符号链接；R2 条件写入、有限重试、下载大小上限、类型安全错误。不提供游客写存储的 HTTP 入口。
 
 Sharp 验证签名、格式、10 MiB、24MP/16000px、安全完整解码；处理并发 2、队列最多 8。原图保存原始字节；私有预览 1200px，展示 2000px，缩略 600px，全为 WebP、保持比例、不放大、autoOrient、移除 EXIF/GPS。基础元数据只返回编码尺寸、格式/MIME、大小和可空 orientation，不解析摄影 EXIF，不覆盖日期。参数统一配置。
 
@@ -97,7 +98,22 @@ ImageService 不更新照片业务状态。publishImage 验证真实管理员后
 
 GET /api/admin/photos/[id]/preview 先 requireAdmin 再查照片匹配的私有 preview_key，返回 WebP、private no-store、Vary Cookie；未登录 401、非管理员 403、无预览 404。GET /api/images/[...key] 仅 local，严格 public Key 和数据库 approved 条件；R2 URL 从固定 HTTPS 自定义 origin 生成。原图/待审核图片不使用公开 URL。
 
-unpublish 仅删公开图，delete 清全部文件，均幂等、不改业务表；以后业务先隐藏，再删除对象和撤销缓存。60 秒公开缓存不保证紧急撤回，CDN purge 尚未实现，绝不能宣称删除对象等于全网缓存消失。
+unpublish 仅删公开图，delete 清全部文件，均幂等、不改业务表。审核服务先以条件事务将照片移出 approved，再删除公开版本；可选 `CLOUDFLARE_ZONE_ID` / `CLOUDFLARE_CACHE_PURGE_TOKEN` 时按 URL 清除 CDN，未配置或失败会明确返回状态，绝不宣称删除对象等于全网缓存消失。
+
+## 审核与发布数据流
+
+```text
+管理员 Session + 同源状态请求
+ → ModerationService 条件检查 pending/approved/hidden
+ → approve/restore：ImageService 读取私有原图，生成去元数据 WebP
+ → 公开桶写入不可预测 publicationId 版本，image_operations 保存 receipt
+ → SQLite 同步事务条件更新状态、公开 Key、审核人/时间并写 moderation_logs
+ → 确认 receipt，刷新 Next 页面缓存；失败补偿删除本次公开对象
+```
+
+`pending → approved`、`pending → rejected`、`approved → hidden`、`hidden → approved` 是唯一开放的状态转换。每次更新都带旧状态条件；两个管理员竞争时只有一个事务返回更新行数，失败方得到 409。拒绝不写公开桶，隐藏清空公开字段但保留私有原图。标签在元数据事务中规范化、去重并写入 `tags/photo_tags`，编辑操作也生成审计日志。
+
+Next `revalidatePath` 只处理应用页面/数据缓存；对象删除和可选 Cloudflare URL purge 分开报告。浏览器已经缓存或下载的副本无法由应用收回。
 
 ## 匿名投稿数据流
 

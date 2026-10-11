@@ -44,17 +44,21 @@
 
 本阶段没有调用真实 Cloudflare；本地和 Vitest 使用官方测试密钥形态或注入验证器。投稿成功不等于公开，仍没有匿名发布或删除接口。
 
-## 第五阶段：审核与发布闭环
+## 第五阶段：审核与发布闭环（已完成）
 
-- [ ] 增量添加 reviewed_by，评估日志用户关联并保留历史
-- [ ] 每个审核 API 独立鉴权、私有预览、批准/拒绝与备注
-- [ ] 将现有 ImageService 发布 receipt 接入状态与日志事务
-- [ ] R2 / SQLite 补偿与重试，下架/恢复及 CDN 缓存撤销
-- [ ] 公开详情图片与实际统计数据
+- [x] `0004` 增量添加 reviewed_by、reviewed_at、rejection_reason、publication_id 和 metadata_changes
+- [x] 每个审核 API 独立鉴权、私有预览、批准/拒绝、隐藏/恢复与备注
+- [x] 将 ImageService versioned publication receipt 接入状态与日志事务
+- [x] R2 / SQLite 补偿记录、条件更新、并发冲突与失败恢复
+- [x] 管理后台审核队列、详情、元数据/标签编辑、审核历史和真实状态统计
+- [x] 可选 Cloudflare URL 级 CDN purge，未配置/失败显式返回，不伪称即时失效
 
-## 第六阶段：整理与长期部署
+本阶段仍没有提供游客发布、删除或原图下载接口。真实 R2、Cloudflare purge 和浏览器视觉验收需在配置生产凭据后由维护者执行。
 
-- [ ] 日期/地点/标签检索、游标分页、元数据编辑、分类维护
+## 第六阶段：公开展示与长期部署
+
+- [ ] 日期/地点/标签检索、游标分页、公开照片墙与分类维护
+- [ ] 公开展示的响应式图片细节、SEO 和无障碍验收
 - [ ] Cloudflare Tunnel、域名与 HTTPS、不可绕过的可信入口
 - [ ] SQLite / R2 备份恢复、容量监控与运维工具
 - [ ] 多管理员、密码重置、MFA（按需求），认证 CLI/adapter 升级验证

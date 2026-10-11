@@ -13,6 +13,7 @@ import {
   originalKey,
   previewKey,
   publicKeys,
+  publicationKeys,
   type ImageFormat,
 } from "../storage/keys";
 import { StorageError, storageErrorCode } from "../storage/errors";
@@ -29,6 +30,9 @@ export interface PublicationReceipt {
   operationId: string;
   displayKey: string;
   thumbnailKey: string;
+}
+export interface VersionedPublicationReceipt extends PublicationReceipt {
+  publicationId: string;
 }
 export class ImageOperationError extends Error {
   constructor(
@@ -144,6 +148,46 @@ export class ImageService {
     assertOriginalKey(photoId, sourceKey);
     return generateImageVariants(await this.storage.private.get(sourceKey));
   }
+  /** Publish a new immutable public version. The publication id is server generated. */
+  async publishImageVersion(
+    photoId: string,
+    sourceKey: string,
+    requestHeaders: Headers,
+  ): Promise<VersionedPublicationReceipt> {
+    await requireAdmin(requestHeaders);
+    assertOriginalKey(photoId, sourceKey);
+    return locked(photoId, async () => {
+      const variants = await this.generateVariants(photoId, sourceKey);
+      await requireAdmin(requestHeaders);
+      const publicationId = randomUUID();
+      const keys = publicationKeys(photoId, publicationId);
+      const objects: OperationObject[] = [
+        { scope: "public", key: keys.displayKey },
+        { scope: "public", key: keys.thumbnailKey },
+      ];
+      const operation = this.journal.begin(photoId, "publish", objects);
+      try {
+        await this.storage.public.put(
+          keys.displayKey,
+          variants.display.buffer,
+          {
+            contentType: "image/webp",
+            ifAbsent: true,
+          },
+        );
+        await this.storage.public.put(
+          keys.thumbnailKey,
+          variants.thumbnail.buffer,
+          { contentType: "image/webp", ifAbsent: true },
+        );
+        this.journal.update(operation.id, "awaiting_commit");
+        return { operationId: operation.id, publicationId, ...keys };
+      } catch (error) {
+        await this.cleanup(operation, storageErrorCode(error));
+        throw new ImageOperationError(operation.id, storageErrorCode(error));
+      }
+    });
+  }
   async publishImage(
     photoId: string,
     sourceKey: string,
@@ -202,6 +246,32 @@ export class ImageService {
       );
     });
   }
+  async confirmVersionPublication(
+    receipt: VersionedPublicationReceipt,
+    requestHeaders: Headers,
+  ): Promise<void> {
+    await requireAdmin(requestHeaders);
+    const operation = this.findOperation(receipt.operationId);
+    await locked(operation.photoId, async () => {
+      await requireAdmin(requestHeaders);
+      const current = this.findOperation(receipt.operationId);
+      if (current.action !== "publish" || current.state !== "awaiting_commit")
+        throw new StorageError("CONFLICT");
+      if (
+        current.objects.length !== 2 ||
+        !current.objects.every((item) => item.scope === "public") ||
+        !current.objects.some((item) => item.key === receipt.displayKey) ||
+        !current.objects.some((item) => item.key === receipt.thumbnailKey)
+      )
+        throw new StorageError("INVALID_KEY");
+      if (
+        !(await this.storage.public.exists(receipt.displayKey)) ||
+        !(await this.storage.public.exists(receipt.thumbnailKey))
+      )
+        throw new StorageError("NOT_FOUND");
+      this.journal.update(current.id, "complete");
+    });
+  }
   private async completePublication(
     receipt: PublicationReceipt,
     operation: ImageOperation,
@@ -237,6 +307,23 @@ export class ImageService {
       photoId,
       "unpublish",
       Object.values(keys).map((key) => ({ scope: "public", key })),
+      requestHeaders,
+    );
+  }
+  async unpublishPublication(
+    photoId: string,
+    keys: { displayKey: string; thumbnailKey: string },
+    requestHeaders: Headers,
+  ): Promise<void> {
+    await requireAdmin(requestHeaders);
+    for (const key of Object.values(keys)) {
+      assertStorageKey("public", key);
+      if (key.split("/")[1] !== photoId) throw new StorageError("INVALID_KEY");
+    }
+    await this.remove(
+      photoId,
+      "unpublish",
+      Object.values(keys).map((key) => ({ scope: "public" as const, key })),
       requestHeaders,
     );
   }

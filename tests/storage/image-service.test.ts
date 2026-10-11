@@ -199,6 +199,23 @@ test("publication returns a receipt only after both writes and never changes bus
   await service.confirmPublication(receipt, adminHeaders);
   expect(journal.find(receipt.operationId)?.state).toBe("complete");
 });
+
+test("versioned publication uses a fresh immutable public key and confirms its receipt", async () => {
+  const saved = await storedPhoto();
+  const receipt = await service.publishImageVersion(
+    saved.photoId,
+    saved.key,
+    adminHeaders,
+  );
+  expect(receipt.publicationId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(receipt.displayKey).toContain(
+    `photos/${saved.photoId}/${receipt.publicationId}/`,
+  );
+  expect(await publicStorage.exists(receipt.displayKey)).toBe(true);
+  expect(await publicStorage.exists(receipt.thumbnailKey)).toBe(true);
+  await service.confirmVersionPublication(receipt, adminHeaders);
+  expect(journal.find(receipt.operationId)?.state).toBe("complete");
+});
 test("repeat and concurrent publication reuse deterministic objects", async () => {
   const saved = await service.saveOriginal(input);
   const put = vi.spyOn(publicStorage, "put");

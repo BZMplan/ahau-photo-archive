@@ -2,7 +2,7 @@
 
 轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿，后续接入管理员审核。
 
-当前完成**第四阶段：匿名投稿与批量图片上传**。支持隔离的本地/R2 存储、Sharp 验证与私有预览、匿名 1–5 张批量投稿、逐张元数据、Turnstile 服务端验证、SQLite HMAC 限流、幂等请求和失败补偿。所有新照片保持 `pending`，没有自动发布；管理员审核与正式发布业务仍未开放。
+当前完成**第五阶段：管理员审核与发布闭环**。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
 ## 技术栈
 
@@ -32,6 +32,8 @@ pnpm dev
 
 默认数据库 `./data/archive.sqlite`；迁移命令创建目录，应用请求不自动建表。`.env.local`、SQLite / WAL / SHM 文件已忽略。启动时校验认证和当前存储驱动配置，缺少必要项拒绝启动；生产构建无需密钥。没有为你创建真实管理员或保存任何测试账号到开发数据库。
 
+审核撤回的 CDN URL 清除是可选能力：仅在服务端配置 `CLOUDFLARE_ZONE_ID` 与 `CLOUDFLARE_CACHE_PURGE_TOKEN` 时调用 Cloudflare Zone Purge API；缺少配置会持久化 `not_configured` 状态，网络/API 失败会持久化失败任务，不会伪称旧缓存已立即失效。
+
 ## 认证与安全
 
 - Email + Password，关闭公开注册；Admin Plugin 默认角色 `user`，只有服务端初始化可建立首个 `admin`。
@@ -43,18 +45,23 @@ pnpm dev
 
 ## 页面与 API
 
-| 路由                                                 | 当前行为                                           |
-| ---------------------------------------------------- | -------------------------------------------------- |
-| `/`、`/photo/[id]`                                   | 公开档案与详情；不存在或非公开照片 404             |
-| `/submit`                                            | 匿名批量投稿表单；提交后进入待审核                 |
-| `/admin/login`                                       | 真实登录；已登录管理员自动跳转后台                 |
-| `/admin`、`/admin/reviews`、`/admin/photos`          | 服务端保护；后台布局、当前管理员、后续业务入口     |
-| `GET /api/admin/me`                                  | 管理员基本信息；匿名 401，非管理员 403             |
-| `GET /api/admin/photos`                              | 同样鉴权，通过后 501，照片业务尚未实现             |
-| `POST /api/auth/sign-in/email`、`/api/auth/sign-out` | Better Auth 登录 / 退出                            |
-| `GET /api/auth/get-session`、`/api/auth/ok`          | 精简会话响应 / 认证健康检查                        |
-| `GET /api/health`                                    | 数据库可用 200，否则 503                           |
-| `POST /api/submissions`                              | 匿名 multipart 投稿；201 pending，失败返回 4xx/5xx |
+| 路由                                                    | 当前行为                                           |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `/`、`/photo/[id]`                                      | 公开档案与详情；不存在或非公开照片 404             |
+| `/submit`                                               | 匿名批量投稿表单；提交后进入待审核                 |
+| `/admin/login`                                          | 真实登录；已登录管理员自动跳转后台                 |
+| `/admin`、`/admin/reviews`、`/admin/photos`             | 服务端保护；真实审核队列、状态筛选、发布/撤回/恢复 |
+| `/admin/reviews/[id]`                                   | 私有预览、详情、同批照片、元数据编辑、审核历史     |
+| `GET /api/admin/me`                                     | 管理员基本信息；匿名 401，非管理员 403             |
+| `GET /api/admin/reviews`、`GET /api/admin/reviews/[id]` | 待审核列表与审核详情、同批照片、日志               |
+| `POST /api/admin/reviews/[id]/approve` / `reject`       | 条件批准发布或拒绝照片                             |
+| `GET /api/admin/photos`、`PATCH /api/admin/photos/[id]` | 管理列表与标题/描述/日期/地点/标签编辑             |
+| `POST /api/admin/photos/[id]/hide` / `restore`          | 撤回或恢复公开版本                                 |
+| `GET /api/admin/photos/[id]/logs`                       | 管理员审核日志                                     |
+| `POST /api/auth/sign-in/email`、`/api/auth/sign-out`    | Better Auth 登录 / 退出                            |
+| `GET /api/auth/get-session`、`/api/auth/ok`             | 精简会话响应 / 认证健康检查                        |
+| `GET /api/health`                                       | 数据库可用 200，否则 503                           |
+| `POST /api/submissions`                                 | 匿名 multipart 投稿；201 pending，失败返回 4xx/5xx |
 
 ## 图片存储与处理
 
@@ -74,7 +81,7 @@ pnpm test:images
 
 前者用随机私有探测文件验证并清理，不创建照片或公开图；后者用临时目录/数据库及 SDK mock，无需云凭据。业务层以后必须在两个公开文件成功后才提交 approved，并根据发布 receipt 确认或补偿；中断/清理失败记录在 SQLite `image_operations`。删除对象不能保证 CDN 已缓存图片即时消失。
 
-完整接口、恢复策略、手动 R2 配置、备份与成本见 [存储指南](docs/storage.md)。本阶段没有调用真实 Cloudflare API、上传真实照片或部署。
+完整接口、恢复策略、手动 R2 配置、备份与成本见 [存储指南](docs/storage.md)；审核状态机和一致性见 [审核指南](docs/moderation.md)。本阶段没有调用真实 Cloudflare R2 或 CDN API、上传真实照片或部署。
 
 ## 匿名投稿
 
@@ -97,7 +104,7 @@ pnpm test:images
 | `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
 | `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
 
-新增命令：`pnpm test:images`（图片、存储、投稿 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
+新增命令：`pnpm test:images`（图片、存储、投稿、审核 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
 
 生产迁移前备份，使用 `generate` / `migrate`，不使用 `push` 替代版本管理，不编辑历史 Migration。所有测试账号和随机密码仅用于独立临时数据库，测试后删除。
 
