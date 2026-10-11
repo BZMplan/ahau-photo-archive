@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,6 +27,8 @@ import { verifyTurnstile } from "../src/server/security/turnstile";
 
 const directory = mkdtempSync(join(tmpdir(), "ahau-foundation-"));
 process.env.DATABASE_PATH = join(directory, "archive.sqlite");
+process.env.BETTER_AUTH_URL = "http://localhost:3000";
+process.env.BETTER_AUTH_SECRET = randomBytes(48).toString("base64url");
 const { db, sqlite } = openDatabase();
 migrate(db, { migrationsFolder: "./drizzle" });
 
@@ -162,10 +164,12 @@ test("tag links are unique and moderation history prevents hard deletion", () =>
 });
 
 test("administrator API denies access and submission endpoint reports unavailable", async () => {
-  const adminResponse = await getAdminPhotos();
+  const adminResponse = await getAdminPhotos(
+    new Request("http://localhost:3000/api/admin/photos"),
+  );
   assert.equal(adminResponse.status, 401);
   assert.deepEqual(await adminResponse.json(), {
-    error: { code: "UNAUTHORIZED", message: "需要管理员身份。" },
+    error: { code: "UNAUTHORIZED", message: "请先登录管理员账号。" },
   });
   assert.equal(submit().status, 501);
 });

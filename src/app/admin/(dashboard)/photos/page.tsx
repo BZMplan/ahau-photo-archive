@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata: Metadata = { title: "照片管理" };
 
-export default function PhotosPage() {
+export default async function PhotosPage() {
+  await requireAdminPage();
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-4">

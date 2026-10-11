@@ -1,101 +1,113 @@
 # AH AU Photo Archive
 
-轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。采用一个 Next.js 全栈项目，公开浏览无需登录，后续支持匿名投稿和管理员审核。
+轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，后续支持匿名投稿和管理员审核。
 
-当前完成**第一阶段：初始化、基础架构与页面骨架**。首页读取真实 SQLite 数据，初始为空；没有演示照片、普通用户账号或虚假上传结果。投稿、登录、审核、图片访问和筛选尚未开放。
+当前完成**第二阶段：管理员认证与后台访问控制**。管理员可以实际登录、访问后台与退出；游客不需要账号，也没有注册入口。投稿、图片上传、审核、图片访问和筛选尚未开放，不提供演示照片或虚假业务统计。
 
 ## 技术栈
 
-- TypeScript、pnpm 12、Next.js 16 App Router、React 19
-- Tailwind CSS 4、shadcn/ui（Radix）、next-themes
-- SQLite、better-sqlite3、Drizzle ORM / Drizzle Kit
-- 已安装并预留接口：Better Auth、R2（AWS S3 SDK）、Sharp；Turnstile 后续通过服务端 HTTP 验证，无需额外 SDK
-- Docker 单实例部署，后续通过 Cloudflare Tunnel 提供服务
+TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp 已预留；Turnstile 后续服务端验证。Docker 单实例部署，未来通过 Cloudflare Tunnel 提供服务。
 
-精确安装版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 版本由 `packageManager` 固定。`pnpm-workspace.yaml` 仅用于依赖构建许可配置，本项目不是 Monorepo。
+精确版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 由 `packageManager` 固定。`pnpm-workspace.yaml` 仅配置依赖构建许可，本项目不是 Monorepo。
 
-## 本地运行
+## 本地运行与首个管理员
 
 ```bash
 pnpm install --frozen-lockfile
+cp .env.example .env.local
+pnpm auth:secret
+```
+
+将命令生成的随机密钥填入 `.env.local` 的 `BETTER_AUTH_SECRET`，至少 32 字符；保留 `BETTER_AUTH_URL=http://localhost:3000` 或设置为你实际访问的本地 origin。不要把密钥粘贴到命令参数或提交到 Git。R2 / Turnstile 凭据留空。
+
+```bash
 pnpm db:migrate
+pnpm admin:init
 pnpm dev
 ```
 
-打开 <http://localhost:3000>。第一阶段无需 `.env` 或 Cloudflare 凭据。默认数据库为 `./data/archive.sqlite`，迁移命令自动创建目录。首次运行或更新 Schema 后先迁移；应用不会在请求中自动建表。
+`pnpm admin:init` **必须在本地交互式终端执行且不带参数**：先检查是否已有管理员，再委托 Better Auth 官方 `auth create-admin` 询问邮箱和密码（初始显示姓名为 `Admin`）。密码输入被遮蔽，长度为 12–128 字符，由 Better Auth 哈希；没有默认密码。已有管理员时停止，不开放初始化 HTTP API，也不在服务器启动时创建账号。普通用户不能注册。该工具用于可信的本地开发/运维终端，不通过远程网页输入凭据。
 
-需要修改配置时，将 `.env.example` 复制为 `.env.local`，仅调整 `DATABASE_PATH`，其余凭据留空。环境文件、数据库及 WAL/SHM 文件均已忽略；不要提交真实密钥。生产使用绝对路径及持久化存储。
+打开 <http://localhost:3000/admin/login>，填写刚创建的邮箱和密码，成功后进入 `/admin`；后台右上角可退出。刷新页面保持会话，过期或退出后访问后台会回到登录页。
+
+默认数据库 `./data/archive.sqlite`；迁移命令创建目录，应用请求不自动建表。`.env.local`、SQLite / WAL / SHM 文件已忽略。启动时校验认证配置，缺少密钥或域名将拒绝启动；生产构建无需密钥。没有为你创建真实管理员或保存任何测试账号到开发数据库。
+
+## 认证与安全
+
+- Email + Password，关闭公开注册；Admin Plugin 默认角色 `user`，只有服务端初始化可建立首个 `admin`。
+- Session 保存在 SQLite，7 天过期，24 小时更新周期；不缓存 Cookie 中的权限。页面及 API 每次服务端读取当前会话与角色，拒绝禁用或被模拟的身份。
+- Cookie 为 HttpOnly、SameSite=Lax、host-only；公开 HTTPS origin 自动开启 Secure。HTTP 仅允许本地 loopback。
+- 信任来源严格等于 `BETTER_AUTH_URL`，不信任任意转发来源/IP，不关闭 Better Auth 的 CSRF、Origin 与回调校验。客户端仅使用 Cookie，不保存 Token，也不持久化密码。
+- SQLite 持久化限流：登录路径共享 10 次/60 秒，其他认证请求共享 100 次/60 秒。当前不可信任客户端 IP，刻意使用保守的共享桶；伪造代理头不能重置额度。启用可信入口前可能看到 Better Auth 的共享桶提示，这不表示限流失效。
+- HTTP 认证仅开放登录、退出、会话查询与健康检查；角色修改、用户创建等 Admin Plugin HTTP 接口均未开放。响应移除 Session Token 等敏感字段。
 
 ## 页面与 API
 
-| 路由                    | 当前行为                                        |
-| ----------------------- | ----------------------------------------------- |
-| `/`                     | 公开档案、空状态、响应式网格骨架、浅色/深色主题 |
-| `/photo/[id]`           | 公开元数据详情；不存在或非公开照片返回 404      |
-| `/submit`               | 禁用的表单预览，不接收文件或保存信息            |
-| `/admin/login`          | 禁用的登录预览                                  |
-| `/admin`                | 无真实管理数据的后台布局预览                    |
-| `/admin/reviews`        | 审核页面骨架                                    |
-| `/admin/photos`         | 照片管理页面骨架                                |
-| `GET /api/health`       | 数据库已迁移且可用时 200，否则 503              |
-| `POST /api/submissions` | 501，投稿尚未实现                               |
-| `GET /api/admin/photos` | 401，认证未接入，默认拒绝访问                   |
-
-后台目前可公开查看静态布局。接入管理数据前必须加服务端会话和管理员权限检查；每个管理员 API / Server Action 独立鉴权。没有初始化管理员账号或开放认证路由。
+| 路由                                                 | 当前行为                                       |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| `/`、`/photo/[id]`                                   | 公开档案与详情；不存在或非公开照片 404         |
+| `/submit`                                            | 禁用的投稿预览                                 |
+| `/admin/login`                                       | 真实登录；已登录管理员自动跳转后台             |
+| `/admin`、`/admin/reviews`、`/admin/photos`          | 服务端保护；后台布局、当前管理员、后续业务入口 |
+| `GET /api/admin/me`                                  | 管理员基本信息；匿名 401，非管理员 403         |
+| `GET /api/admin/photos`                              | 同样鉴权，通过后 501，照片业务尚未实现         |
+| `POST /api/auth/sign-in/email`、`/api/auth/sign-out` | Better Auth 登录 / 退出                        |
+| `GET /api/auth/get-session`、`/api/auth/ok`          | 精简会话响应 / 认证健康检查                    |
+| `GET /api/health`                                    | 数据库可用 200，否则 503                       |
+| `POST /api/submissions`                              | 501，尚未实现                                  |
 
 ## 开发命令
 
-| 命令                                | 用途                                     |
-| ----------------------------------- | ---------------------------------------- |
-| `pnpm dev`                          | 开发服务器                               |
-| `pnpm typecheck`                    | 路由类型生成与严格类型检查               |
-| `pnpm lint`                         | ESLint                                   |
-| `pnpm format` / `pnpm format:check` | 格式化 / 格式检查                        |
-| `pnpm test`                         | 临时 SQLite、公开隐私与 API 边界集成测试 |
-| `pnpm check`                        | 类型、Lint、格式和测试                   |
-| `pnpm build` / `pnpm start`         | 生产构建 / 本地生产服务                  |
-| `pnpm db:generate`                  | 生成 SQL Migration                       |
-| `pnpm db:migrate`                   | 应用 Migration，可重复执行               |
-| `pnpm db:studio`                    | 本地 Drizzle Studio，请先迁移            |
-| `pnpm db:compile`                   | 编译 Docker 迁移脚本                     |
+| 命令                                   | 用途                                                              |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| `pnpm dev`                             | 开发服务器                                                        |
+| `pnpm typecheck` / `pnpm lint`         | 路由与严格类型检查 / ESLint                                       |
+| `pnpm format` / `pnpm format:check`    | 格式化 / 格式检查                                                 |
+| `pnpm test`                            | 临时 SQLite 的业务、认证、安全与迁移测试                          |
+| `pnpm check`                           | 类型、Lint、格式与集成测试                                        |
+| `pnpm build` / `pnpm start`            | standalone 生产构建 / 本地生产服务                                |
+| `pnpm test:auth-flow`                  | 先 build，再自动启动临时数据库生产服务做 HTTP 流程验证            |
+| `pnpm db:generate` / `pnpm db:migrate` | 生成 / 应用 Drizzle Migration                                     |
+| `pnpm db:studio` / `pnpm db:compile`   | 本地数据库工具 / 编译 Docker 迁移脚本                             |
+| `pnpm auth:secret` / `pnpm admin:init` | 生成认证密钥 / 安全初始化首个管理员                               |
+| `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
+| `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
 
-使用 `generate` 和 `migrate` 管理数据库版本，不使用 `push` 替代 Migration。UUID 和默认时间由 Drizzle 应用生成，原生 SQL 需显式提供。拍摄日期为可空 `YYYY-MM-DD`，其他时间使用 UTC Unix 毫秒。
+生产迁移前备份，使用 `generate` / `migrate`，不使用 `push` 替代版本管理，不编辑历史 Migration。所有测试账号和随机密码仅用于独立临时数据库，测试后删除。
 
 ## 目录
 
 ```text
 src/
-  app/
-    (public)/                 # 首页、详情、投稿
-    admin/login/              # 登录
-    admin/(dashboard)/        # 后台概览、审核、管理
-    api/                      # 健康检查与预留 API
-  components/ui/              # shadcn/ui；components 下为共享页面组件
-  lib/                        # UI 工具
-  server/
-    db/                       # Schema 与连接
-    auth/                     # 管理员会话边界
-    storage/                  # R2 接口
-    images/                   # Sharp 接口
-    security/                 # Turnstile 接口
-    services/                 # 查询、投稿、审核
-  types/                      # 公开 DTO 与共享类型
-drizzle/                      # SQL 与快照，提交 Git
-scripts/                      # 迁移脚本
-tests/                        # 集成测试
-docs/                         # 架构与路线图
-data/                         # 自动创建，不提交
+  app/(public)/                 # 公开首页、详情、投稿
+  app/admin/login/              # 登录独立于受保护布局
+  app/admin/(dashboard)/        # 后台、审核、照片管理
+  app/api/auth/[...all]/        # 限定 Better Auth HTTP 接口
+  app/api/admin/                # 每个 API 单独鉴权
+  components/ui/                # shadcn/ui
+  components/admin-*.tsx        # 登录、退出、后台布局
+  lib/auth-client.ts            # 浏览器认证客户端
+  server/auth/                  # 配置、会话/权限、页面保护、官方 CLI 配置
+  server/db/                    # 业务与认证 Schema、连接
+  server/{storage,images,security,services}/
+  types/                        # 公开及管理员 DTO
+  instrumentation.ts            # 运行时认证环境校验
+drizzle/                        # 增量 SQL 与快照
+scripts/                        # 管理员初始化、迁移、生产启动
+tests/http/                     # 真正 Next.js 服务的 HTTP 认证流程
+docs/                           # 中文架构、路线图、验证记录
+data/                           # 持久化数据，不提交
 ```
 
-## Docker
+## Docker 与未来 Tunnel
 
 ```bash
-docker compose up --build -d
+docker compose --env-file .env.local up --build -d
 docker compose logs -f archive
 ```
 
-容器以非 root 用户运行，启动前迁移，数据库保存在 `archive-data` 命名卷中，端口仅绑定 `127.0.0.1:3000`。`docker compose down -v` 会删除持久化数据。备份应使用 SQLite 在线备份或先停服务备份整个数据目录，不能只复制正在写入的主数据库文件。
+Compose 要求传入 `BETTER_AUTH_SECRET` 和 `BETTER_AUTH_URL`，只在运行时传递，不写入镜像。容器非 root，启动先迁移；数据库在 `archive-data` 命名卷，端口绑定 `127.0.0.1:3000`。首次初始化需要在可信本地终端使用源码与官方 CLI 访问同一数据库；精简运行镜像不包含开发 CLI，不能对另一份数据库创建账号后期待容器自动同步。
 
-构建不需要数据库或 R2 凭据。当前不配置 Tunnel、不调用真实 Cloudflare API。Docker 引擎需要本机安装并启动，实际验证记录见 [验证记录](docs/validation.md)。
+通过 Tunnel 上线时将 URL 设置为真实外部 HTTPS origin；浏览器在这个 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / X-Forwarded-* 推断认证域名。入口保持私有或 loopback，在配置可信代理前不启用 IP 头。当前没有创建 Tunnel，也没有调用 Cloudflare API。
 
-后续开发请阅读 [架构设计](docs/architecture.md)、[路线图](docs/roadmap.md) 和 [项目约定](AGENTS.md)。
+`docker compose down -v` 删除数据卷。备份使用 SQLite 在线备份或停服务后完整复制数据目录。构建不需要数据库、认证密钥或 R2 凭据。详情见 [架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[验证记录](docs/validation.md)、[开发约定](AGENTS.md)。

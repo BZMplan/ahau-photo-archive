@@ -56,3 +56,64 @@
 浏览器安全策略拒绝访问本地项目地址，原因为该请求未获用户许可。没有尝试绕过。因此未执行浏览器截图、主题按钮点击、移动视口和控制台检查；不能将 HTTP/静态源码检查视为这些检查已通过。
 
 React 源码检查确认客户端边界集中于主题和错误重试，表单字段有标签，按钮有名称，列表使用稳定 ID，未使用第三方随机图片或客户端数据库访问。实际视觉与主题交互仍建议在允许访问的浏览器中复核。
+
+# 第二阶段验证记录
+
+验证日期：2026-10-11，同一开发环境。以下是认证实现后的结果，第一阶段的公开后台预览行为已被服务端保护替代。
+
+## 命令与数据
+
+- `pnpm install --frozen-lockfile`：通过；`pnpm peers check`：无 peer 问题。
+- `pnpm check`：严格类型、ESLint、Prettier、19 项集成测试通过。
+- `pnpm build`：生产构建通过，无真实认证密钥或 Cloudflare 凭据参与构建。
+- `pnpm db:generate`：Schema 与 Migration 一致，无新增差异。
+- `pnpm db:migrate`：首次应用 0001 和重复执行通过。
+- `pnpm db:compile`：通过；编译后的迁移脚本在独立临时 SQLite 中执行通过。
+- `auth check schema --config src/server/auth/cli.ts`（`pnpm auth:check` 的实际命令）：官方 Schema 检查通过，使用进程内随机临时密钥与临时数据库。
+- `docker compose config --quiet`：使用临时进程环境配置通过；本阶段没有重新构建或运行 Docker 镜像。
+- `pnpm admin:init` 在非 TTY 运行：按预期退出 1，拒绝管道/非交互输入，未创建账号。
+- `git diff --check`：通过。原 0000 Migration 与业务 Schema 未修改。
+
+认证与 HTTP 测试均自动建立并清理临时数据库、生成随机测试密码与密钥。开发数据库已迁移，最终检查 user 和 photos 均为 0；未填入真实管理员、测试账号或演示照片，未保存真实密钥。
+
+## 集成安全测试
+
+新增 12 项认证测试和 1 项旧库迁移测试，连同原 6 项共 19 项：
+
+- 官方 createUser 流程生成 UUID 与密码哈希，Better Auth verifyPassword 验证；过短密码拒绝且无记录。
+- 登录成功/失败/非法输入；刷新请求保持 Cookie 会话，响应不含哈希/Token。
+- 匿名/伪造 Cookie 401；普通身份与伪造 role 403，注册及 Admin Plugin 创建/改角色接口 404。
+- 数据库撤销角色/禁用后立即失去权限，不使用权限 Cookie Cache。
+- Session 过期拒绝，退出后重用旧 Cookie 401。
+- 外部 Origin 的登录/退出以及外部或协议相对回调地址 403。
+- 登录限流持久化到 SQLite，重新创建 auth 实例仍限流；伪造 forwarded / CF IP 无法绕过。
+- 同时 20 次非法登录：10 次允许进入输入检查，另 10 次返回 429。
+- HTTPS 配置发送 Secure + HttpOnly + SameSite=Lax、无 Domain 的 Cookie。
+- 仅应用 0000 的旧库先写业务与历史日志，再升级 0001；内容保持一致、重复迁移成功、没有自动账号。
+
+Better Auth 在刻意触发失败测试时打印 Invalid password / Origin / callback 以及共享限流桶提示，属于预期拒绝路径。
+
+## 实际 Next.js HTTP 流程
+
+`pnpm test:auth-flow` 在生产构建后启动真实 standalone 服务，使用独立临时数据库与随机端口。覆盖公开页面、真实登录表单 HTML、后台页面、认证 API 和数据库会话，6 项测试通过。
+
+`AHAU_TEST_SERVER_MODE=development pnpm test:auth-flow` 实际启动开发服务，5 项业务流程测试通过；生产启动配置用例仅在生产模式运行。
+
+| 请求/操作                                        | 实际结果                            |
+| ------------------------------------------------ | ----------------------------------- |
+| 匿名 `/`、`/submit`、`/admin/login`              | 200；登录表单可用、无注册入口       |
+| 匿名 `/admin`、`/admin/reviews`、`/admin/photos` | 307 至 `/admin/login`，无管理员信息 |
+| 匿名 `GET /api/admin/me`                         | 401                                 |
+| 错误密码                                         | 401                                 |
+| 管理员正确登录                                   | 200，设置真实 HttpOnly 会话 Cookie  |
+| 登录后后台三个页面、再次请求首页                 | 200，显示当前管理员                 |
+| 已登录管理员访问登录页                           | 307 至 `/admin`                     |
+| 管理员 `GET /api/admin/me`                       | 200，仅基本 DTO                     |
+| 退出后访问后台 / API，携带旧 Cookie              | 307 / 401                           |
+| 普通测试用户访问后台 / API                       | 拒绝跳转 / 403                      |
+| 数据库将会话设为已过期后访问后台 / API           | 307 / 401                           |
+| 缺少必要 secret 启动生产服务                     | 输出配置错误并退出 1                |
+
+HTTP 测试证明路由、Cookie、服务端判断与数据库状态；没有运行浏览器 JavaScript，不能替代真实按钮点击与布局检查。当前登录加载、防重复、显示/隐藏密码、键盘提交、主题与移动布局经过源码检查，仍需在可访问本地服务的浏览器中人工复核。遵守此前浏览器访问拒绝，没有绕过策略。
+
+真实管理员初始化的最终密码交互未执行；已检查官方 CLI password 类型输入、验证非 TTY 拒绝、测试其使用的官方 createUser/哈希路径。没有用固定或弱密码完成交互演示，也未要求维护者提供真实密码。

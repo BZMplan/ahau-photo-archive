@@ -1,81 +1,99 @@
 # 架构设计
 
-## 单体全栈
+## 单体全栈与模块
 
-页面、Route Handlers、业务服务和 SQLite 位于同一个 Next.js 项目。使用 Node.js Runtime，原生 SQLite 驱动与 Sharp 不部署到 Edge。一个应用实例配一个持久化数据卷，不增加 Redis、消息队列或独立后端。
+Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例运行。SQLite / Sharp 不部署到 Edge；单实例配独立持久化卷，不引入 Redis 或队列。SQLite 延迟连接、进程复用，启用 WAL、外键与 5 秒 busy timeout。构建不连接运行数据库，CLI / 容器启动负责迁移。
 
-`(public)` 和 `(dashboard)` 路由组不出现在 URL 中。优先 Server Components，仅主题 Provider、主题按钮和错误重试使用 Client Components。服务入口通过 `server-only` 防止浏览器导入；迁移脚本共享不带此标记的底层数据库连接。
+页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
-页面和 API 调用 `server/services`，UI 不直接访问数据库或云凭据。数据库延迟连接，在同一进程内复用，启用 WAL、外键和 5 秒 busy timeout。迁移由 CLI 或容器启动执行，构建不依赖运行时数据库。
+| 模块                                                   | 状态                                 |
+| ------------------------------------------------------ | ------------------------------------ |
+| `server/db`                                            | 业务表、认证表、连接与增量 Migration |
+| `services/public-photos`                               | 只读获批且完整可公开的记录，显式 DTO |
+| `auth/options` / `auth/index`                          | Better Auth 1.7.7 配置 / 服务端实例  |
+| `auth/admin` / `auth/pages`                            | 会话与角色检查 / 页面跳转            |
+| `auth/http`                                            | HTTP 认证接口白名单与敏感字段过滤    |
+| `auth/cli` / `scripts/admin-init`                      | 官方 CLI 配置与安全初始化包装        |
+| `storage/r2`、`images/processor`、`security/turnstile` | 仅预留接口，明确抛出未实现错误       |
+| `services/submissions`、`services/moderation`          | 仅预留业务接口，不写入数据           |
 
-## 核心模块
-
-| 模块                     | 第一阶段状态                                               |
-| ------------------------ | ---------------------------------------------------------- |
-| `server/db`              | Schema、连接、约束与索引已实现                             |
-| `services/public-photos` | 有限数量的公开查询与显式字段投影已实现                     |
-| `auth/admin`             | Better Auth 会话类型已预留，检查默认返回 `null`            |
-| `storage/r2`             | 私有原图、获批衍生图、下架清理接口，调用明确抛出未实现错误 |
-| `images/processor`       | Sharp 接口，不生成图片                                     |
-| `security/turnstile`     | 服务端验证接口，不接受令牌或调用 Cloudflare                |
-| `services/submissions`   | 投稿输入与返回类型，不保存数据                             |
-| `services/moderation`    | 审核输入与管理员参数，不执行状态变更                       |
-
-公开查询只返回 `approved` 且有展示图 Key、缩略图 Key、发布时间的记录。DTO 不包含对象 Key、联系方式、批次或管理员信息。目前按发布时间降序，最多 60 条，后续加游标分页和组合过滤。图片访问未接入，已有公开元数据也只展示明确的图片占位说明。
-
-## 数据模型
-
-- `submissions`：UUID、可选公开署名、可选私有联系方式、投稿时间。
-- `photos`：UUID、批次、标题、描述、校园地点、拍摄日期、审核状态、三类对象 Key、MIME、大小、像素尺寸、投稿/公开/更新时间。
-- `tags`：UUID、唯一名称、唯一 slug、创建时间。
-- `photo_tags`：复合主键、反向标签索引，父记录删除时清理关联。
-- `moderation_logs`：UUID、照片、管理员 ID、操作、前后状态、备注和时间。
-
-照片和日志外键采用 `restrict`，避免删除批次/照片丢失历史。管理员 ID 暂为非空文本，第二阶段生成 Better Auth 表时加入关联 Migration；没有真实审核写入口。UUID 与默认时间由应用生成。
-
-状态在 TypeScript 和数据库 CHECK 中约束。`approved` 必须有两个衍生图 Key 和发布时间。对象 Key 有唯一索引；状态与发布时间、拍摄日期、地点分别有复合索引。照片的 `submitted_at` 记录入库时间，批次字段记录整批投稿时间。
-
-拍摄日期为可空 `YYYY-MM-DD`，不编造旧照片的时区或时刻。其他时间为 UTC Unix 毫秒，Drizzle 映射为 `Date`。日期格式、文本长度等输入规则在第二阶段服务端校验中落实。
-
-## 目标数据流（第二阶段）
+## 认证架构与数据流
 
 ```text
-匿名投稿
- → 文件大小 / MIME / 签名 / 解码像素校验
- → 服务端限流 + Turnstile Siteverify
- → 私有 R2 原图
- → SQLite transaction 写批次与 pending 照片
- → 管理员鉴权 → 私有预览 → 审核
- → Sharp 生成去 EXIF 的优化图
- → 写公开衍生图区
- → SQLite transaction 更新 approved + published_at + 审核日志
- → 公开查询 → 展示图 / 缩略图
+本地可信 TTY：pnpm admin:init
+ → 配置校验 → 检查已有管理员
+ → 官方 auth create-admin 遮蔽密码输入
+ → 服务端 Admin Plugin createUser + Better Auth 密码哈希
+ → user(role=admin) + account(credential)
+
+浏览器 /admin/login
+ → 同源 POST /api/auth/sign-in/email
+ → Better Auth 输入校验、CSRF / Origin / callback 校验、SQLite 限流
+ → 验证密码 → 创建 session → HttpOnly Cookie
+ → 客户端 GET /api/admin/me 再确认权限
+ → 固定导航 /admin
+
+页面/API 请求带 Cookie
+ → Better Auth 验证签名、过期并读取 SQLite
+ → 检查 role=admin、未被禁用、不是模拟会话
+ → 页面未登录跳转；非管理员回登录页显示拒绝信息
+ → API 未登录 401 / 非管理员 403 / 管理员 DTO
+
+退出 POST /api/auth/sign-out
+ → Better Auth 删除 Session 并清 Cookie
+ → 固定导航 /admin/login
 ```
 
-R2 与 SQLite 无法原子提交。发布先确保衍生图成功，再提交数据库；失败清理孤立对象并允许重试。隐藏/拒绝要撤销公开访问并处理 CDN 缓存，不能仅改数据库状态留下公开 URL。补偿和删除顺序在实现发布服务时确定并测试。
+不开放公开注册，不提供管理员初始化 HTTP API，不在启动时创建账号。Admin Plugin 默认角色为 `user`，应用只认可精确 `admin`。仅可信服务端 CLI 允许 `createUser`；HTTP 包装层不开放 Admin Plugin 的任何用户/角色变更端点。客户端伪造 `role`、Token 或请求参数不会替代数据库判断。
 
-## 存储与权限
+Session 7 天有效、24 小时更新周期、freshAge 1 小时。Cookie Cache 关闭，权限即时读取当前数据库；页面检查禁用自动刷新，避免 Server Component 写 Cookie。Better Auth 的公开会话接口保留正常更新机制。过期会话无法复活，退出后旧 Cookie 无效。
 
-原图和所有待审核资源始终位于私有桶；只有获批展示图/缩略图进入公开区域。审核预览使用鉴权代理或短期签名 URL。对象 Key 使用内部 UUID，不包含姓名、联系方式或原始文件名。
+`admin/login` 在保护布局之外，URL 保持不变。`admin/(dashboard)/layout` 与每个叶子页面都调用 `requireAdminPage()`；React `cache` 只在当前服务端渲染内去重。不能依赖布局永远重新执行，也不能仅依赖客户端或 Middleware。未来页面取私有数据前继续调用保护函数。
 
-公开图去除 EXIF，包括地理信息；原图用于留存，默认不公开。云凭据和管理员会话仅在服务端处理，只有 Turnstile site key 可使用 `NEXT_PUBLIC_`。
+每个 `/api/admin/*` 必须调用 `requireAdmin(request.headers)`，捕获 `AuthenticationError` 交给 `authenticationErrorResponse`；未登录 401、无权限 403、响应 no-store。Server Actions 同样单独鉴权。`GET /api/admin/me` 仅返回 id / name / email / role。完整 Session 仅留在服务器；登录和会话 HTTP 响应也去掉 Token 等敏感认证数据。
 
-静态后台不读取私有数据，暂未做登录重定向。接入业务前先加页面保护，每个 API / Server Action 再独立验证管理员角色。投稿接口目前 501，管理员接口默认 401，服务不会模拟成功。
+## Cookie、来源与限流
+
+运行时必须提供随机 `BETTER_AUTH_SECRET`（至少 32 字符）和固定 `BETTER_AUTH_URL`。后者只接受无路径、无凭据、无 query/hash 的 origin；生产外部地址必须 HTTPS，仅 loopback 允许本地 HTTP。启动校验，构建阶段无需密钥。
+
+`trustedOrigins` 精确等于该 origin；不从任意请求 Host / 转发头推断认证域名，`trustedProxyHeaders=false`。Cookie host-only、HttpOnly、SameSite=Lax，HTTPS 启用 Secure；不关闭 Better Auth 内建 CSRF / Origin / 回调防开放重定向检查。登录成功和退出的前端目的地固定，无回跳参数。
+
+认证限流启用且存 SQLite `rate_limit`，登录共享 10 次/60 秒，其他认证请求共享 100 次/60 秒。`ipAddressHeaders=[]` 刻意不信任客户端代理头，Better Auth 使用共享 per-path 桶并提示无法确定客户端 IP。单实例重启不清额度；当前低流量管理用途接受共享额度。部署经身份可验证且不可绕过的入口后再设计可信 IP 与清理过期计数，不能简单信任任意 `CF-Connecting-IP` / `X-Forwarded-For`。
+
+Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sqlite3 的事务回调是同步的，不能包裹 Better Auth 的 async 回调。不自行实现哈希、Token 或 Cookie；认证数据库操作使用官方 adapter。业务审核将来仍在同步 Drizzle 事务中写状态与日志。
+
+## 数据模型与兼容性
+
+业务表保持原样：`submissions`、`photos`、`tags`、`photo_tags`、`moderation_logs`。照片 pending / approved / rejected / hidden 的 CHECK、公开衍生图约束、索引与外键不变。拍摄日期可空 YYYY-MM-DD，投稿/发布时间等为 UTC 毫秒。公开查询只选 approved 且衍生图与发布时间完整的记录，最多 60 条；不返回原图 Key、联系方式或管理员信息。
+
+新增认证表基于 1.7.7 官方 CLI 生成，并经 Drizzle Migration：
+
+- `user`：UUID 文本 ID、邮箱唯一、姓名与验证标志、Admin Plugin 的 role / banned / banReason / banExpires。
+- `session`：UUID、唯一 Token、过期、用户外键及索引、IP/User-Agent、impersonatedBy。
+- `account`：用户外键与索引、credential 密码哈希及标准 provider/token 字段。
+- `verification`：标识、验证值、过期与索引，为 Better Auth 标准表，暂不开放邮件验证业务。
+- `rate_limit`：唯一请求桶 Key、次数与最后请求时间。
+
+新 `0001` 只 CREATE 认证表/索引，保留 `0000` 和全部业务数据；不重建业务表。当前实际 `photos` **没有 `reviewed_by` 字段**，日志 `admin_id` 为 UUID 兼容的文本但没有用户外键。认证 ID 使用 UUID 文本，与未来审核关联兼容。后续审核阶段用新的增量迁移添加可空 `photos.reviewed_by` 外键，并先评估历史日志再建立用户关联，不能强行破坏历史记录。本阶段没有审核写入口。
+
+## 后续图片流与隐私
+
+匿名投稿 → 文件大小/MIME/签名/像素验证 → 单实例限流和 Turnstile → 私有 R2 原图 → SQLite 批次与 pending → 管理员私有预览/审核 → Sharp 去 EXIF → 获批衍生图 → SQLite 发布状态与审核日志 → 公开查询。
+
+原图和待审核图片始终私有；仅获批展示图/缩略图可进入公开区。审核 URL 短期签名且鉴权，Key 用 UUID，不含联系方式。隐藏/拒绝需撤销公开资源与 CDN 缓存，不能只改数据库。R2 和 SQLite 无原子事务，发布与清理需要补偿、幂等和重试测试。
 
 ## 部署
 
-Next.js standalone 输出，Docker 分离安装、构建、运行，使用 Node.js 24、非 root 用户与健康检查。启动先迁移再启动应用，数据库独立挂载。当前不支持多副本共享 SQLite 或网络文件系统上的并发写入。
-
-未来 Tunnel 连接本机或同一 Docker 网络的应用。上线前做备份/恢复演练、迁移备份、日志与容量监控、凭据配置和安全测试。
+Next.js standalone、Docker Node.js 24、非 root、启动先迁移、SQLite 持久化。认证密钥只在运行时传入，不能进入镜像。未来 Tunnel 外部 HTTPS origin 配置到 BETTER_AUTH_URL，浏览器使用该域名，应用入口保持私有，不开放任意来源。备份恢复、监控、可信代理与防护上线前验证。不支持多副本共享 SQLite。
 
 ## 官方参考
 
-初始化通过 Context7 核对 Next.js、Drizzle 与 shadcn/ui；预留服务参考官方资料：
+本阶段先通过 Context7 核对 Better Auth，再用对应官方文档与已安装 1.7.7 源码验证 API、CLI 和安全行为。
 
-- [Next.js App Router](https://nextjs.org/docs/app) / [自行托管](https://nextjs.org/docs/app/guides/self-hosting)
-- [Drizzle Migration](https://orm.drizzle.team/docs/migrations)
-- [shadcn/ui Next.js 安装](https://ui.shadcn.com/docs/installation/next)
 - [Better Auth Drizzle Adapter](https://better-auth.com/docs/adapters/drizzle)
-- [R2 S3 API](https://developers.cloudflare.com/r2/api/s3/api/)
-- [Sharp 输出处理](https://sharp.pixelplumbing.com/api-output/)
-- [Turnstile 服务端验证](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/)
+- [Admin Plugin](https://better-auth.com/docs/plugins/admin)
+- [官方 CLI](https://better-auth.com/docs/concepts/cli)
+- [Rate limiting](https://better-auth.com/docs/concepts/rate-limit)
+- [Cookies](https://better-auth.com/docs/concepts/cookies)
+- [Next.js authentication](https://nextjs.org/docs/app/guides/authentication)
+- [Drizzle migrations](https://orm.drizzle.team/docs/migrations)

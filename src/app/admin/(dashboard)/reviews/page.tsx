@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata: Metadata = { title: "投稿审核" };
 
-export default function ReviewsPage() {
+export default async function ReviewsPage() {
+  await requireAdminPage();
   return (
     <>
       <h1 className="text-2xl font-medium">投稿审核</h1>

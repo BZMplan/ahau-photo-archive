@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { AdminShell } from "@/components/admin-shell";
+import { requireAdminPage } from "@/server/auth/pages";
 
-// This skeleton exposes no administrative data. Add a server-side session guard before wiring data.
-export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return <AdminShell>{children}</AdminShell>;
+export default async function DashboardLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const admin = await requireAdminPage();
+  return <AdminShell admin={admin}>{children}</AdminShell>;
 }

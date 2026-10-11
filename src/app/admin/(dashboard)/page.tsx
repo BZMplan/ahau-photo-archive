@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata: Metadata = { title: "管理概览" };
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const admin = await requireAdminPage();
   return (
     <>
       <h1 className="text-2xl font-medium">档案概览</h1>
       <p className="text-muted-foreground mt-3 text-sm">
-        整理影像，让校园记忆有序留存。
+        欢迎回来，{admin.name}。整理影像，让校园记忆有序留存。
       </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         {["待审核", "公开照片", "全部影像"].map((label) => (

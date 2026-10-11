@@ -5,6 +5,8 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       DATABASE_PATH: /app/data/archive.sqlite
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in your runtime environment}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL to the exact application origin}
     volumes:
       - archive-data:/app/data
     restart: unless-stopped

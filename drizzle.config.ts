@@ -6,7 +6,7 @@ loadEnvConfig(process.cwd());
 
 export default defineConfig({
   dialect: "sqlite",
-  schema: "./src/server/db/schema.ts",
+  schema: ["./src/server/db/schema.ts", "./src/server/db/auth-schema.ts"],
   out: "./drizzle",
   dbCredentials: { url: getDatabasePath() },
 });

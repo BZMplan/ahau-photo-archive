@@ -1,9 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Badge } from "@/components/ui/badge";
+import { AdminLogoutButton } from "@/components/admin-logout-button";
+import type { AdminUser } from "@/types/admin";
 
-export function AdminShell({ children }: { children: ReactNode }) {
+export function AdminShell({
+  children,
+  admin,
+}: {
+  children: ReactNode;
+  admin: AdminUser;
+}) {
   return (
     <div className="min-h-screen">
       <header className="border-b">
@@ -15,13 +22,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <div className="flex items-center gap-3">
-            <Badge variant="outline">布局预览</Badge>
-            <Link
-              href="/admin/login"
-              className="text-muted-foreground hover:text-foreground text-xs"
-            >
-              管理员登录
-            </Link>
+            <div className="text-right text-xs">
+              <p className="font-medium">{admin.name}</p>
+              <p className="text-muted-foreground mt-1 break-all">
+                {admin.email}
+              </p>
+            </div>
+            <AdminLogoutButton />
             <ThemeToggle />
           </div>
         </div>
@@ -33,7 +40,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             className="flex flex-wrap gap-4 text-sm lg:flex-col lg:gap-1"
           >
             {[
-              ["/admin", "概览"],
+              ["/admin", "仪表盘"],
               ["/admin/reviews", "投稿审核"],
               ["/admin/photos", "照片管理"],
             ].map(([href, label]) => (
@@ -49,7 +56,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </aside>
         <main id="main-content" className="min-w-0 px-6 py-8 sm:px-10">
           <p className="bg-muted/30 text-muted-foreground mb-8 rounded-md border p-4 text-sm leading-6">
-            后台尚未开放，当前仅为页面结构预览。认证、数据读取和管理操作将在后续阶段接入。
+            管理员认证已接入。投稿审核、照片管理和统计数据将在后续阶段开放。
           </p>
           {children}
         </main>
