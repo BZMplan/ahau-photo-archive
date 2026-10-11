@@ -8,7 +8,7 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5 sm:px-10">
         <Link
           href="/"
-          aria-label="AH AU Photo Archive 首页"
+          aria-label="AHAU Photo Archive 首页"
           className="flex items-center gap-3"
         >
           <span className="bg-foreground text-background flex size-9 items-center justify-center rounded-sm text-xs font-semibold tracking-tight">
@@ -16,7 +16,7 @@ export function SiteHeader() {
           </span>
           <span>
             <span className="block text-sm font-semibold tracking-wide">
-              AH AU
+              AHAU
             </span>
             <span className="text-muted-foreground block text-[10px] tracking-[0.18em]">
               PHOTO ARCHIVE

@@ -5,8 +5,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "AH AU Photo Archive · 校园影像档案",
-    template: "%s · AH AU Photo Archive",
+    default: "AHAU Photo Archive · 校园影像档案",
+    template: "%s · AHAU Photo Archive",
   },
   description: "留存校园的建筑、风景、四季与日常，让每一段校园记忆有迹可循。",
 };

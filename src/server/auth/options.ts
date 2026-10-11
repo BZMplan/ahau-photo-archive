@@ -11,7 +11,7 @@ export function createArchiveAuth(
   runtimePlugins: BetterAuthPlugin[] = [],
 ) {
   return betterAuth({
-    appName: "AH AU Photo Archive",
+    appName: "AHAU Photo Archive",
     secret: environment.secret,
     baseURL: environment.baseURL,
     basePath: "/api/auth",

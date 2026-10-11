@@ -38,7 +38,7 @@ export default async function LoginPage() {
         className="mx-auto flex max-w-md flex-col gap-6 px-6 py-16"
       >
         <p className="text-muted-foreground text-center text-xs tracking-[0.2em]">
-          AH AU / ADMINISTRATION
+          AHAU / ADMINISTRATION
         </p>
         <Card>
           <CardHeader>

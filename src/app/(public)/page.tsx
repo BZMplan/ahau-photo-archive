@@ -28,7 +28,7 @@ export default function HomePage() {
         </div>
         <div className="text-muted-foreground flex items-center gap-5">
           <p className="text-xs leading-6">
-            AH AU PHOTO ARCHIVE
+            AHAU PHOTO ARCHIVE
             <br />
             校园影像档案馆
           </p>

@@ -1,4 +1,4 @@
-# AH AU Photo Archive
+# AHAU Photo Archive
 
 轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿和管理员审核。
 

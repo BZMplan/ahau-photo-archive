@@ -16,7 +16,7 @@ export function AdminShell({
       <header className="border-b">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">
           <Link href="/" className="text-sm font-semibold tracking-wide">
-            AH AU{" "}
+            AHAU{" "}
             <span className="text-muted-foreground ml-2 font-normal">
               / 档案管理
             </span>
