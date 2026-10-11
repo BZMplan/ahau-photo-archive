@@ -1,5 +1,6 @@
-import { cpSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import nextEnv from "@next/env";
 
@@ -18,6 +19,22 @@ process.env.DATABASE_PATH = resolve(
 if (process.env.LOCAL_STORAGE_PATH)
   process.env.LOCAL_STORAGE_PATH = resolve(process.env.LOCAL_STORAGE_PATH);
 process.env.HOSTNAME ||= "127.0.0.1";
+const bootstrap = spawnSync(
+  process.execPath,
+  [join(root, ".output/bootstrap.cjs")],
+  {
+    cwd: root,
+    stdio: "inherit",
+    env: process.env,
+  },
+);
+if (bootstrap.error) throw bootstrap.error;
+if (bootstrap.status !== 0) process.exit(bootstrap.status ?? 1);
+if (!process.env.BETTER_AUTH_SECRET)
+  process.env.BETTER_AUTH_SECRET = readFileSync(
+    join(dirname(process.env.DATABASE_PATH), "bootstrap/better-auth-secret"),
+    "utf8",
+  ).trim();
 cpSync(join(root, ".next/static"), join(standalone, ".next/static"), {
   recursive: true,
 });

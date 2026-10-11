@@ -14,8 +14,7 @@ export type StorageEnvironment =
 export function readStorageEnvironment(
   env: Record<string, string | undefined> = process.env,
 ): StorageEnvironment {
-  const driver =
-    env.STORAGE_DRIVER || (env.NODE_ENV === "production" ? "r2" : "local");
+  const driver = env.STORAGE_DRIVER || "local";
   if (driver === "local") {
     const root = resolve(
       /* turbopackIgnore: true */ env.LOCAL_STORAGE_PATH ||
@@ -76,4 +75,3 @@ export function readStorageEnvironment(
     publicBaseURL: url.origin,
   };
 }
-import "server-only";

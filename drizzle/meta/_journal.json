@@ -43,6 +43,13 @@
       "when": 1791720535609,
       "tag": "0005_tough_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791732899850,
+      "tag": "0006_fat_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }

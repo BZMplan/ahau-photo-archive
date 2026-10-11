@@ -2,6 +2,7 @@ import "server-only";
 import { getAuth } from "./index";
 import type { AdminUser } from "@/types/admin";
 import type { createArchiveAuth } from "./options";
+import { passwordChangeRequired } from "./bootstrap-policy";
 
 export type AuthSession = ReturnType<
   typeof createArchiveAuth
@@ -19,6 +20,13 @@ export class AuthenticationError extends Error {
         : "当前账号没有管理员权限。",
     );
     this.status = code === "UNAUTHORIZED" ? 401 : 403;
+  }
+}
+
+export class BootstrapPasswordChangeError extends Error {
+  readonly code = "PASSWORD_CHANGE_REQUIRED";
+  constructor() {
+    super("首次登录必须先修改初始密码。");
   }
 }
 
@@ -52,9 +60,12 @@ export async function requireSession(
 
 export async function requireAdmin(
   requestHeaders: Headers,
+  allowBootstrapPassword = false,
 ): Promise<AdminSession> {
   const session = await requireSession(requestHeaders);
   if (!isAdminSession(session)) throw new AuthenticationError("FORBIDDEN");
+  if (!allowBootstrapPassword && passwordChangeRequired(session.user.id))
+    throw new BootstrapPasswordChangeError();
   return session;
 }
 
@@ -71,6 +82,11 @@ export function toAdminUser(session: AdminSession): AdminUser {
 }
 
 export function authenticationErrorResponse(error: unknown): Response {
+  if (error instanceof BootstrapPasswordChangeError)
+    return Response.json(
+      { error: { code: error.code, message: error.message } },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
   if (!(error instanceof AuthenticationError)) throw error;
   return Response.json(
     { error: { code: error.code, message: error.message } },

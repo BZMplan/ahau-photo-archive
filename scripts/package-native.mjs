@@ -19,6 +19,8 @@ const required = [
   ".next/static",
   "public",
   ".output/migrations/scripts/migrate.js",
+  ".output/bootstrap.cjs",
+  ".output/admin-recover.cjs",
   "drizzle/meta/_journal.json",
 ];
 
@@ -44,6 +46,18 @@ cpSync(join(root, "public"), join(output, "public"), { recursive: true });
 cpSync(join(root, ".output/migrations"), join(output, "migrations"), {
   recursive: true,
 });
+cpSync(
+  join(root, ".output/bootstrap.cjs"),
+  join(output, "migrations/bootstrap.cjs"),
+);
+cpSync(
+  join(root, ".output/admin-recover.cjs"),
+  join(output, "migrations/admin-recover.cjs"),
+);
+cpSync(
+  join(root, "scripts/start-production.sh"),
+  join(output, "start-production.sh"),
+);
 cpSync(join(root, "drizzle"), join(output, "drizzle"), { recursive: true });
 
 const modules = ["@next/env", "better-sqlite3", "drizzle-orm", "zod"];
@@ -61,6 +75,8 @@ for (const name of [
   "backup-db.mjs",
   "restore-db.mjs",
   "check-migrations.mjs",
+  "read-secret.mjs",
+  "admin-credentials.mjs",
 ]) {
   cpSync(join(root, "scripts", name), join(output, "migrations/scripts", name));
 }

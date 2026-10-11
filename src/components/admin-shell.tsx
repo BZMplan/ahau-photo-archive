@@ -43,6 +43,7 @@ export function AdminShell({
               ["/admin", "仪表盘"],
               ["/admin/reviews", "投稿审核"],
               ["/admin/photos", "照片管理"],
+              ["/admin/settings", "账户设置"],
             ].map(([href, label]) => (
               <Link
                 className="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-3 py-2"

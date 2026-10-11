@@ -13,11 +13,15 @@ import {
 } from "@/components/ui/card";
 import { getPageSession } from "@/server/auth/pages";
 import { isAdminSession } from "@/server/auth/admin";
+import { passwordChangeRequired } from "@/server/auth/bootstrap-policy";
 
 export const metadata: Metadata = { title: "管理员登录" };
 export default async function LoginPage() {
   const session = await getPageSession();
-  if (isAdminSession(session)) redirect("/admin");
+  if (isAdminSession(session))
+    redirect(
+      passwordChangeRequired(session.user.id) ? "/admin/settings" : "/admin",
+    );
   return (
     <div className="bg-muted/20 min-h-screen">
       <header className="flex items-center justify-between px-6 py-5">

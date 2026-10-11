@@ -44,8 +44,13 @@ export function AdminLoginForm({ initialError }: { initialError?: string }) {
         );
         return;
       }
+      const resultBody = (await response.json()) as {
+        data?: { passwordChangeRequired?: boolean };
+      };
       // A fixed destination and full navigation avoid open redirects and stale router state.
-      window.location.replace("/admin");
+      window.location.replace(
+        resultBody.data?.passwordChangeRequired ? "/admin/settings" : "/admin",
+      );
     } catch {
       setError("暂时无法登录，请检查网络后重试。");
     } finally {

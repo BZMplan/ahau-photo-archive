@@ -1,10 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { loadEnvConfig } from "@next/env";
 import { eq } from "drizzle-orm";
 import { openDatabase } from "../src/server/db/connection";
 import { user } from "../src/server/db/auth-schema";
 import { readAuthEnvironment } from "../src/server/auth/environment";
+import { getDatabasePath } from "../src/server/db/path";
 
 function initialize() {
   if (
@@ -17,6 +20,14 @@ function initialize() {
     );
   }
   loadEnvConfig(process.cwd());
+  if (!process.env.BETTER_AUTH_SECRET) {
+    const path = join(
+      dirname(getDatabasePath()),
+      "bootstrap/better-auth-secret",
+    );
+    if (existsSync(path))
+      process.env.BETTER_AUTH_SECRET = readFileSync(path, "utf8").trim();
+  }
   readAuthEnvironment();
   const { db, sqlite } = openDatabase();
   try {

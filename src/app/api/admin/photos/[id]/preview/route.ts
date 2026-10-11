@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   AuthenticationError,
+  BootstrapPasswordChangeError,
   authenticationErrorResponse,
   requireAdmin,
 } from "@/server/auth/admin";
@@ -41,7 +42,10 @@ export async function GET(
       },
     });
   } catch (error) {
-    if (error instanceof AuthenticationError)
+    if (
+      error instanceof AuthenticationError ||
+      error instanceof BootstrapPasswordChangeError
+    )
       return authenticationErrorResponse(error);
     if (
       error instanceof StorageError &&

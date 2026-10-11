@@ -11,9 +11,9 @@ WorkingDirectory=/opt/ahau-photo-archive/current
 Environment=NODE_ENV=production
 Environment=HOSTNAME=127.0.0.1
 Environment=PORT=3000
+Environment=NODE_BIN=/usr/bin/node
 EnvironmentFile=/etc/ahau-photo-archive/app.env
-ExecStartPre=/usr/bin/node /opt/ahau-photo-archive/current/migrations/scripts/check-migrations.mjs
-ExecStart=/usr/bin/node /opt/ahau-photo-archive/current/server.js
+ExecStart=/bin/sh /opt/ahau-photo-archive/current/start-production.sh
 Restart=on-failure
 RestartSec=5s
 KillSignal=SIGTERM

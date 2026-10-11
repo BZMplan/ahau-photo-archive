@@ -164,6 +164,7 @@ test("admin login, refresh requests, cookies and DTOs never disclose credentials
     assert.equal(result.status, 200);
     assert.deepEqual(await result.json(), {
       data: {
+        passwordChangeRequired: false,
         user: {
           id: adminId,
           name: "Test administrator",

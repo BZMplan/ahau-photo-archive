@@ -11,7 +11,7 @@ export class TrustedOriginError extends Error {
 
 export function assertTrustedOrigin(request: Request): void {
   const origin = request.headers.get("origin");
-  if (!origin) return;
+  if (!origin) throw new TrustedOriginError();
   let expected: string;
   try {
     expected = readAuthEnvironment().baseURL;

@@ -206,6 +206,7 @@ test("failed login returns 401; admin login survives refreshed pages and redirec
   assert.equal(me.status, 200);
   assert.deepEqual(await me.json(), {
     data: {
+      passwordChangeRequired: false,
       user: {
         id: adminId,
         name: "HTTP test administrator",

@@ -1,6 +1,5 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { admin } from "better-auth/plugins/admin";
-import { nextCookies } from "better-auth/next-js";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import type { openDatabase } from "../db/connection";
@@ -9,6 +8,7 @@ import type { AuthEnvironment } from "./environment";
 export function createArchiveAuth(
   db: ReturnType<typeof openDatabase>["db"],
   environment: AuthEnvironment,
+  runtimePlugins: BetterAuthPlugin[] = [],
 ) {
   return betterAuth({
     appName: "AH AU Photo Archive",
@@ -39,6 +39,8 @@ export function createArchiveAuth(
       minPasswordLength: 12,
       maxPasswordLength: 128,
     },
+    // No mail transport is configured. Only the dedicated admin settings route
+    // may update an email after rechecking the current password.
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,
@@ -64,7 +66,7 @@ export function createArchiveAuth(
     },
     plugins: [
       admin({ defaultRole: "user", adminRoles: ["admin"] }),
-      nextCookies(),
+      ...runtimePlugins,
     ],
   });
 }

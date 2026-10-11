@@ -2,13 +2,13 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证变更读 README；Docker 部署、迁移、备份与恢复变更读 `docs/deployment.md`，原生部署变更读 `docs/deployment-native.md`；确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证与自动初始化变更读 README 和 `docs/initialization.md`；Docker 部署、迁移、备份与恢复变更读 `docs/deployment.md`，原生部署变更读 `docs/deployment-native.md`；确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、Cloudflare R2、Sharp、Cloudflare Turnstile、Docker / Docker Compose、原生 Linux systemd。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
 部署目标：同时支持 Docker Compose 和原生 Linux Node.js Standalone + systemd，不将任一方式作为另一方式的替代。两者复用同一应用、Drizzle Migration、图片存储服务、环境变量语义及 SQLite 在线备份/恢复脚本；未来部署改动须同时检查两者。SQLite 使用持久目录或卷，图片继续支持 R2，匿名投稿继续使用 Turnstile。公网入口由项目外部的 HTTP/HTTPS 反向代理负责，代理终止 HTTPS，应用通过 HTTP 接收可信代理转发的请求；公开域名用 `BETTER_AUTH_URL` 配置，不硬编码。项目不管理反向代理或 TLS 证书，不依赖 Cloudflare Tunnel / Cloudflare Zero Trust。后续不要主动引入 cloudflared、Tunnel 配置文件、初始化脚本或容器服务。保持 Origin、Host、客户端 IP 与上传限制的安全边界。
 
-生产运行使用 Next.js standalone `node server.js`，由单实例 Docker Compose 或 systemd 管理；SQLite 主文件/WAL/SHM 与本地图片必须位于持久卷或目录，构建不得包含真实数据库、图片、密钥或环境文件。原生打包须在与目标 Linux CPU、Node 版本及 libc 兼容的环境构建，不能复制 macOS 原生模块到 Linux。Dockerfile 采用与 Sharp、better-sqlite3 原生模块兼容的 Linux/Node 构建和运行环境。迁移是显式操作，先备份真实持久化数据库；启动或重启不重建数据库，不自动初始化管理员。生产不可使用测试 Turnstile 凭据、绕过投稿验证或管理员认证。应用镜像回滚不等于数据库 Schema 回滚；恢复前核对备份和图片版本。Docker 命令与恢复流程见 `docs/deployment.md`；原生 Linux 流程见 `docs/deployment-native.md`。
+生产运行使用 Next.js standalone `node server.js`，由单实例 Docker Compose 或 systemd 管理；SQLite 主文件/WAL/SHM 与本地图片必须位于持久卷或目录，构建不得包含真实数据库、图片、密钥或环境文件。原生打包须在与目标 Linux CPU、Node 版本及 libc 兼容的环境构建，不能复制 macOS 原生模块到 Linux。Dockerfile 采用与 Sharp、better-sqlite3 原生模块兼容的 Linux/Node 构建和运行环境。生产启动在 HTTP 服务前运行共用 BootstrapService：只应用待执行的 Drizzle Migration，已有库变更前先用 SQLite Backup API 备份；失败不启动。首次无管理员才创建，重复启动不覆盖现有账户、密码、数据或图片。生产不可使用测试 Turnstile 凭据、绕过投稿验证或管理员认证。应用镜像回滚不等于数据库 Schema 回滚；恢复前核对备份和图片版本。Docker 命令与恢复流程见 `docs/deployment.md`；原生 Linux 流程见 `docs/deployment-native.md`。
 
 涉及库、框架、SDK、API、CLI 或云服务的用法、配置、升级及库相关调试时，先用 Context7 `resolve-library-id`（已给精确 `/org/project` ID 可跳过），再 `query-docs` 查询对应概念。不同概念分开查，优先官方和版本匹配来源。普通重构、业务逻辑调试、代码审查和一般概念不需要。遵守工具调用次数限制，不可用时查官方文档并说明依据。
 
@@ -67,8 +67,8 @@
 
 - Better Auth 负责密码哈希、Cookie 和 Session；公开注册关闭。Admin Plugin 默认 user，只有精确 admin、未禁用且非模拟会话能进入后台。Cookie 权限缓存保持关闭。
 - HTTP 认证白名单在 `auth/http.ts`，管理员创建、角色修改等保持服务端专用。扩展白名单前评估权限、CSRF 和返回字段，保持普通用户无法获得管理员权限。
-- 首个管理员只通过可信本地 TTY 的 `pnpm admin:init`，检查已有管理员后委托官方 CLI 安全输入密码；无默认密码、公开初始化 API 或启动自动创建。
-- 认证配置由 `auth/environment.ts` 校验；密钥随机至少 32 字符，URL 为固定 origin。外部 HTTPS 开启 Secure，只有 loopback 可 HTTP；来源精确匹配，不信任任意代理来源/IP。
+- 首个管理员由启动前 Bootstrap 通过 Better Auth Admin Plugin 服务端 API 创建真实 admin；可用一次性环境变量指定凭据，缺密码则生成随机密码到持久私有文件（0600）。后台首次必须改密由页面和 API 服务端门禁执行。已有管理员不受旧环境变量覆盖，已初始化后管理员缺失不自动补建；恢复只能走可信本地 CLI。不开放初始化/恢复 HTTP API 或公开注册。
+- 认证配置由 `auth/environment.ts` 校验；新库可在持久私有目录生成稳定随机密钥，已有库密钥缺失或指纹变化须拒绝启动，不得静默轮换。URL 为固定 origin。外部 HTTPS 开启 Secure，只有 loopback 可 HTTP；来源精确匹配，不信任任意代理来源/IP。
 - SQLite 持久化认证限流当前使用共享 per-path 桶。改为 IP 限流前必须证明入口不可绕过且头可信，不关闭 CSRF/Origin 校验。
 - Drizzle auth adapter 不启用 async transaction；better-sqlite3 事务回调为同步。测试账号只创建于独立临时数据库，禁止向开发或生产库填入测试账号。
 
@@ -80,7 +80,7 @@
 - 私有图片 API 先 requireAdmin 再查 photoId/匹配 Key，no-store，401/403/404；禁止直接静态服务私有目录。local 公开路由还要验证 approved，防路径/符号链接穿越；不开放游客上传、发布或删除接口。
 - 发布必须按 storage.md 协议：写入持久操作记录，两个公开文件成功后业务事务才能 approved；提交后确认 receipt，失败补偿。image_operations 中断/清理失败可追踪，恢复先核对业务状态，不能自动删除可能已提交的对象。
 - 撤回只清公开图、保留原图；永久删除仍保留业务历史。删除幂等，隐藏/拒绝需按配置处理 CDN purge；不能宣称 R2 删除等于即时全网撤回。
-- local/r2 显式切换，生产缺 R2 配置要失败、不能静默回退；密钥只读服务端环境、禁止硬编码。测试用临时目录/数据库和 SDK mock，不连接真实云或填入开发/生产测试照片。
+- 默认 local；显式选择 r2 时缺配置或桶权限要失败、不能静默回退。R2 启动检查不向公开桶写入可见对象，自动建桶只在明确启用时尝试；密钥只读服务端环境、禁止硬编码。测试用临时目录/数据库和 SDK mock，不连接真实云或填入开发/生产测试照片。
 - 未接入功能不调用真实 Cloudflare API、不模拟成功。凭据在服务端环境变量，`.env.example` 只含空值及非敏感示例，秘密不使用 `NEXT_PUBLIC_`。
 - 批量投稿先写 `submission_operations`，逐张保存私有原图/预览；SQLite 提交成功后才返回 201，任一失败都必须补偿清理，清理失败要保留 operation 记录供排查。
 - 不把 pending 图片、原图或预览写入公开 Bucket；投稿流程不得调用 `publishImage`，公开 Key、签名 URL 和存储凭据不能返回游客。

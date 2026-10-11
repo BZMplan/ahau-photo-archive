@@ -7,6 +7,6 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode;
 }) {
-  const admin = await requireAdminPage();
+  const admin = await requireAdminPage(true);
   return <AdminShell admin={admin}>{children}</AdminShell>;
 }

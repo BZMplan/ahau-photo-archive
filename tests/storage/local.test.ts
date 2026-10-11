@@ -110,13 +110,16 @@ test("atomic create-if-absent preserves original bytes", async () => {
     Buffer.from("first"),
   );
 });
-test("mode defaults never silently fall back in production", () => {
+test("local is the default and explicit R2 never falls back", () => {
   expect(readStorageEnvironment({ NODE_ENV: "development" }).driver).toBe(
     "local",
   );
-  expect(() => readStorageEnvironment({ NODE_ENV: "production" })).toThrow(
-    /R2_ACCOUNT_ID/,
+  expect(readStorageEnvironment({ NODE_ENV: "production" }).driver).toBe(
+    "local",
   );
+  expect(() =>
+    readStorageEnvironment({ NODE_ENV: "production", STORAGE_DRIVER: "r2" }),
+  ).toThrow(/R2_ACCOUNT_ID/);
   expect(
     readStorageEnvironment({
       NODE_ENV: "production",

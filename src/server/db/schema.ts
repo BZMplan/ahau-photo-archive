@@ -22,6 +22,18 @@ const createdAt = () =>
     .notNull()
     .$defaultFn(() => new Date());
 
+// One durable marker separates first-run provisioning from later account recovery.
+export const bootstrapState = sqliteTable("bootstrap_state", {
+  id: integer("id").primaryKey(),
+  adminId: text("admin_id").notNull(),
+  passwordChangeRequired: integer("password_change_required", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  createdAt: createdAt(),
+});
+
 export const submissions = sqliteTable(
   "submissions",
   {

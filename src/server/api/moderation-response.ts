@@ -3,6 +3,7 @@ import "server-only";
 import {
   authenticationErrorResponse,
   AuthenticationError,
+  BootstrapPasswordChangeError,
 } from "@/server/auth/admin";
 import { ImageOperationError } from "@/server/services/image-service";
 import { ModerationError } from "@/server/services/moderation";
@@ -10,7 +11,10 @@ import { StorageError } from "@/server/storage/errors";
 import { TrustedOriginError } from "@/server/security/origin";
 
 export function moderationErrorResponse(error: unknown): Response {
-  if (error instanceof AuthenticationError)
+  if (
+    error instanceof AuthenticationError ||
+    error instanceof BootstrapPasswordChangeError
+  )
     return authenticationErrorResponse(error);
   if (error instanceof TrustedOriginError)
     return Response.json(

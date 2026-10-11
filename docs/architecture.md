@@ -2,7 +2,7 @@
 
 ## 单体全栈与模块
 
-Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例运行。SQLite / Sharp 不部署到 Edge；单实例配独立持久化卷，不引入 Redis 或队列。SQLite 延迟连接、进程复用，启用 WAL、外键与 5 秒 busy timeout。构建不连接运行数据库；部署者在应用启动前显式运行迁移命令。
+Next.js App Router、Route Handlers、服务和 SQLite 在同一 Node.js 实例运行。SQLite / Sharp 不部署到 Edge；单实例配独立持久化卷，不引入 Redis 或队列。SQLite 延迟连接、进程复用，启用 WAL、外键与 5 秒 busy timeout。构建不连接运行数据库；生产启动脚本在 HTTP 服务前运行统一 BootstrapService，自动核对并迁移。
 
 ## 部署拓扑与职责
 
@@ -13,13 +13,13 @@ Internet
 HTTP/HTTPS Reverse Proxy（项目外部，终止 HTTPS）
     |
     v HTTP
-Next.js Application（Docker / Docker Compose，单实例）
-    +---- SQLite Database（Docker Volume 或绑定目录）
+Next.js Application（Docker Compose 或原生 systemd，单实例）
+    +---- SQLite Database（持久卷或目录）
     +---- Cloudflare R2（私有原图、获批公开衍生图）
     +---- Cloudflare Turnstile（匿名投稿 Siteverify）
 ```
 
-Next.js 容器提供 HTTP 应用与健康检查，部署者在启动前显式执行数据库 Migration，应用运行时访问 R2 和 Turnstile；容器不管理 TLS 证书。外部反向代理由部署者选择、配置和维护，负责公网 HTTP/HTTPS 入口、TLS 终止、转发、上传请求体限制与 HTTP 超时；项目不提供代理配置或代理容器。应用端口只允许可信代理访问，Compose 默认绑定主机 loopback。部署可运行在普通 Linux 服务器或其他支持 Docker 的主机，不依赖 Cloudflare Tunnel 或 Cloudflare Zero Trust。
+Docker 容器和原生 systemd 均在启动 HTTP 应用前运行同一 BootstrapService：检查密钥、数据库、存储、管理员，必要时先在线备份再执行待应用的 Drizzle Migration；失败则不启动 Next.js。运行时访问 R2 和 Turnstile；项目不管理 TLS 证书。外部反向代理由部署者选择、配置和维护，负责公网 HTTP/HTTPS 入口、TLS 终止、转发、上传请求体限制与 HTTP 超时；项目不提供代理配置或代理容器。应用端口只允许可信代理访问，Compose 默认绑定主机 loopback。部署可运行在普通 Linux 服务器或其他支持 Docker 的主机，不依赖 Cloudflare Tunnel 或 Cloudflare Zero Trust。
 
 页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
@@ -41,11 +41,11 @@ Next.js 容器提供 HTTP 应用与健康检查，部署者在启动前显式执
 ## 认证架构与数据流
 
 ```text
-本地可信 TTY：pnpm admin:init
- → 配置校验 → 检查已有管理员
- → 官方 auth create-admin 遮蔽密码输入
- → 服务端 Admin Plugin createUser + Better Auth 密码哈希
+服务启动前 BootstrapService
+ → 校验稳定密钥、迁移、存储与 bootstrap_state
+ → 无管理员且未初始化过时，用 Admin Plugin 服务端 createUser
  → user(role=admin) + account(credential)
+ → 随机初始密码保存到私有 0600 文件并要求首次改密
 
 浏览器 /admin/login
  → 同源 POST /api/auth/sign-in/email
@@ -65,17 +65,17 @@ Next.js 容器提供 HTTP 应用与健康检查，部署者在启动前显式执
  → 固定导航 /admin/login
 ```
 
-不开放公开注册，不提供管理员初始化 HTTP API，不在启动时创建账号。Admin Plugin 默认角色为 `user`，应用只认可精确 `admin`。仅可信服务端 CLI 允许 `createUser`；HTTP 包装层不开放 Admin Plugin 的任何用户/角色变更端点。客户端伪造 `role`、Token 或请求参数不会替代数据库判断。
+不开放公开注册或管理员初始化 HTTP API。启动前只在首次空状态创建管理员；已有管理员不改邮箱、角色或密码，已初始化后管理员缺失则拒绝自动补建。Admin Plugin 默认角色为 `user`，应用只认可精确 `admin`。仅可信启动前 Bootstrap 或服务端 CLI 允许 `createUser`；HTTP 包装层不开放 Admin Plugin 的任何用户/角色变更端点。客户端伪造 `role`、Token 或请求参数不会替代数据库判断。
 
 Session 7 天有效、24 小时更新周期、freshAge 1 小时。Cookie Cache 关闭，权限即时读取当前数据库；页面检查禁用自动刷新，避免 Server Component 写 Cookie。Better Auth 的公开会话接口保留正常更新机制。过期会话无法复活，退出后旧 Cookie 无效。
 
-`admin/login` 在保护布局之外，URL 保持不变。`admin/(dashboard)/layout` 与每个叶子页面都调用 `requireAdminPage()`；React `cache` 只在当前服务端渲染内去重。不能依赖布局永远重新执行，也不能仅依赖客户端或 Middleware。未来页面取私有数据前继续调用保护函数。
+`admin/login` 在保护布局之外，URL 保持不变。`admin/(dashboard)/layout` 与每个叶子页面都调用 `requireAdminPage()`（设置页允许初始改密会话）；React `cache` 只在当前服务端渲染内去重。不能依赖布局永远重新执行，也不能仅依赖客户端或 Middleware。未来页面取私有数据前继续调用保护函数。
 
-每个 `/api/admin/*` 必须调用 `requireAdmin(request.headers)`，捕获 `AuthenticationError` 交给 `authenticationErrorResponse`；未登录 401、无权限 403、响应 no-store。Server Actions 同样单独鉴权。`GET /api/admin/me` 仅返回 id / name / email / role。完整 Session 仅留在服务器；登录和会话 HTTP 响应也去掉 Token 等敏感认证数据。
+每个 `/api/admin/*` 必须调用 `requireAdmin(request.headers)`，捕获 `AuthenticationError` 交给 `authenticationErrorResponse`；未登录 401、无权限 403、响应 no-store。Server Actions 同样单独鉴权。`GET /api/admin/me` 仅返回 id / name / email / role 与首次改密标志。完整 Session 仅留在服务器；登录和会话 HTTP 响应也去掉 Token 等敏感认证数据。
 
 ## Cookie、来源与限流
 
-运行时必须提供随机 `BETTER_AUTH_SECRET`（至少 32 字符）和固定 `BETTER_AUTH_URL`。后者只接受无路径、无凭据、无 query/hash 的 origin；生产外部地址必须 HTTPS，仅 loopback 允许本地 HTTP。启动校验，构建阶段无需密钥。
+运行时必须有稳定随机 `BETTER_AUTH_SECRET`（至少 32 字符）和固定 `BETTER_AUTH_URL`。新库可由 Bootstrap 生成前者到持久私有文件；已有库缺失或指纹不匹配则拒绝启动。后者只接受无路径、无凭据、无 query/hash 的 origin；生产外部地址必须 HTTPS，仅 loopback 允许本地 HTTP。启动校验，构建阶段无需密钥。
 
 `trustedOrigins` 精确等于该 origin；不从任意请求 Host / 转发头推断认证域名，`trustedProxyHeaders=false`。Cookie host-only、HttpOnly、SameSite=Lax，HTTPS 启用 Secure；不关闭 Better Auth 内建 CSRF / Origin / 回调防开放重定向检查。登录成功和退出的前端目的地固定，无回跳参数。
 
@@ -101,7 +101,7 @@ Drizzle Adapter 使用 SQLite，未启用异步 adapter transaction：better-sql
 
 ## 图片基础设施与隐私
 
-现有 server/storage 和 server/images 已实现，lib 保持客户端工具用途，凭据与文件 IO 不进入浏览器。统一 ObjectStorage 的固定 scope 包含 put/get/head/delete/exists；local 根目录独立于 Next 静态 public，R2 两桶共享一个 S3Client。服务入口都有 server-only。配置只在服务器读取，开发默认 local，生产未设置 driver 默认 r2，缺凭据拒绝启动，不静默回退。
+现有 server/storage 和 server/images 已实现，lib 保持客户端工具用途，凭据与文件 IO 不进入浏览器。统一 ObjectStorage 的固定 scope 包含 put/get/head/delete/exists；local 根目录独立于 Next 静态 public，R2 两桶共享一个 S3Client。服务入口都有 server-only。配置只在服务器读取，两种环境均默认 local；显式选择 r2 时缺凭据或桶权限拒绝启动，不静默回退。
 
 Key 为 UUID + originals/previews/photos 的白名单布局；新公开版本使用 `photos/{photoId}/{publicationId}/display.webp` 和 `thumbnail.webp`，兼容历史固定 Key，不由客户端指定版本。原图扩展名匹配实际编码，私有/公开前缀不混用。LocalStorage 原子文件写入与条件创建，检查 Key、真实路径和符号链接；R2 条件写入、有限重试、下载大小上限、类型安全错误。不提供游客写存储的 HTTP 入口。
 
@@ -160,7 +160,7 @@ Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流�
 
 ## 部署
 
-生产支持 Docker Compose 与原生 Linux systemd 两种单实例方式，均运行同一个 Next.js standalone `node server.js`，共用业务服务、Drizzle SQL、运行时环境变量和 SQLite Backup API。Docker 镜像使用多阶段 Debian slim / Node.js 24；Compose 将 SQLite 主文件、WAL、SHM 与可选 local 图片放在 `/app/data` 持久卷，备份放独立卷。原生方式把代码按版本放在 `/opt/ahau-photo-archive/releases`，数据放在 `/var/lib/ahau-photo-archive`，备份放在 `/var/backups/ahau-photo-archive`，由低权限 systemd 服务监听回环地址。两种方式认证与 R2 密钥只在运行时传入。Migration 由一次性命令显式执行，启动前只读核对已应用版本，再执行 `node server.js`；应用重启不自动迁移或重建数据库。恢复须停应用并显式确认；镜像或 symlink 回滚都不等于 Schema 回滚。不支持多副本共享 SQLite。详见 [Docker 指南](deployment.md)与[原生指南](deployment-native.md)。
+生产支持 Docker Compose 与原生 Linux systemd 两种单实例方式，均在持久目录中运行同一个 BootstrapService：首次创建 SQLite 与 local 图片目录、执行已提交 Drizzle Migration、建立真实管理员；已有库有待执行迁移时先通过 SQLite Backup API 生成一致性备份。失败不启动 Next.js；重复启动不清空数据、不重置管理员。之后 `exec node server.js`。Docker 使用 `/app/data` 持久卷，原生使用 `/var/lib/ahau-photo-archive`，备份分别位于独立卷或 `/var/backups/ahau-photo-archive`。两者共用 R2、Turnstile 和环境变量语义。代码回滚不等于 Schema 回滚；不支持多副本共享 SQLite。详见 [初始化指南](initialization.md)、[Docker 指南](deployment.md)与[原生指南](deployment-native.md)。
 
 `BETTER_AUTH_URL` 配置为浏览器实际访问的固定 HTTPS origin，不从请求的 Host 或转发头动态生成；它同时供 Better Auth 的 `baseURL` / 精确 `trustedOrigins`、Turnstile 生产 hostname 校验，以及 Next.js 的公开 metadata、sitemap 和 robots URL 使用。HTTPS 在外部代理终止，代理以 HTTP 请求应用；Better Auth 仍根据公开 HTTPS URL 设置 Secure、HttpOnly、SameSite=Lax、host-only Cookie。生产 Turnstile Widget 须绑定同一公开域名，并在 Siteverify 校验 hostname 和 action。投稿页面动态读取运行时 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 并作为公开 prop 传给客户端；Secret Key 仍只在服务端运行时读取，同一镜像可用于不同公开域名。代理需限制允许的 Host，应用继续精确校验 Origin、拒绝跨域管理员写请求，不关闭 CSRF/Origin 校验来适配代理。
 

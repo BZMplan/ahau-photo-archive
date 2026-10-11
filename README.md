@@ -2,7 +2,7 @@
 
 轻量的校园影像档案馆，长期整理校园建筑、自然风景、四季变化、校园生活和历史影像。一个 Next.js 全栈项目，公开浏览无需登录，支持匿名投稿和管理员审核。
 
-当前支持两种并列的单实例生产部署：**[Docker Compose](docs/deployment.md)** 和 **[原生 Node.js Standalone + systemd](docs/deployment-native.md)**。两种方式共用持久化 SQLite、Drizzle Migration、图片服务、显式迁移与在线备份；原生方式运行网站无需 Docker 或 pnpm。正式代理、R2 权限和浏览器验收仍由部署者在目标环境完成。公开影像设计见 [公开影像指南](docs/gallery.md)。
+当前支持两种并列的单实例生产部署：**[Docker Compose](docs/deployment.md)** 和 **[原生 Node.js Standalone + systemd](docs/deployment-native.md)**。两种方式共用自动初始化、持久化 SQLite、Drizzle Migration、图片服务与在线备份；原生方式运行网站无需 Docker 或 pnpm。正式代理、R2 权限和浏览器验收仍由部署者在目标环境完成。公开影像设计见 [公开影像指南](docs/gallery.md)。
 
 第五阶段审核发布能力继续保留。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
@@ -12,29 +12,19 @@ TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadc
 
 精确版本以 `pnpm-lock.yaml` 为准。建议 Node.js 24 LTS（见 `.node-version`），pnpm 由 `packageManager` 固定。`pnpm-workspace.yaml` 仅配置依赖构建许可，本项目不是 Monorepo。
 
-## 本地运行与首个管理员
+## 本地运行与自动初始化
 
 ```bash
 pnpm install --frozen-lockfile
 cp .env.example .env.local
-pnpm auth:secret
-```
-
-将命令生成的随机密钥填入 `.env.local` 的 `BETTER_AUTH_SECRET`，至少 32 字符；保留 `BETTER_AUTH_URL=http://localhost:3000` 或设置为你实际访问的本地 origin。不要把密钥粘贴到命令参数或提交到 Git。本地设置 `STORAGE_DRIVER=local`。投稿页面需要 Turnstile Site Key；本地可使用 Cloudflare 官方测试 Site Key 和 Secret Key。已有 `.env.local` 时仅补充新变量，不覆盖原有认证密钥。
-
-```bash
-pnpm db:migrate
-pnpm admin:init
 pnpm dev
 ```
 
-`pnpm admin:init` **必须在本地交互式终端执行且不带参数**：先检查是否已有管理员，再委托 Better Auth 官方 `auth create-admin` 询问邮箱和密码（初始显示姓名为 `Admin`）。密码输入被遮蔽，长度为 12–128 字符，由 Better Auth 哈希；没有默认密码。已有管理员时停止，不开放初始化 HTTP API，也不在服务器启动时创建账号。普通用户不能注册。该工具用于可信的本地开发/运维终端，不通过远程网页输入凭据。
+设置 `BETTER_AUTH_URL=http://localhost:3000`；本地投稿可使用 Cloudflare 官方 Turnstile 测试 Site Key/Secret，生产必须使用真实域名与生产密钥。`BETTER_AUTH_SECRET` 对新库可留空，首次启动会安全生成并持久化；已有库必须保持原密钥。`STORAGE_DRIVER` 默认 `local`，无需 R2 凭据。`pnpm dev` 在 Next 服务启动前自动检查数据库、运行 Drizzle Migration、初始化存储并创建首个管理员。正常首次部署无需单独执行 `pnpm db:migrate` 或 `pnpm admin:init`。
 
-打开 <http://localhost:3000/admin/login>，填写刚创建的邮箱和密码，成功后进入 `/admin`；后台右上角可退出。刷新页面保持会话，过期或退出后访问后台会回到登录页。
+未指定 `ADMIN_BOOTSTRAP_PASSWORD` 时，初始随机密码存放在数据库同级的 `bootstrap/admin-credentials`（0600）。在可信本地终端执行 `pnpm admin:credentials` 领取，不会通过网页或普通日志显示。初始邮箱默认为 `admin@localhost.invalid`，也可在首次启动前设置 `ADMIN_BOOTSTRAP_EMAIL`、`ADMIN_BOOTSTRAP_PASSWORD` 和 `ADMIN_BOOTSTRAP_NAME`。自动生成密码的管理员首次登录必须到 `/admin/settings` 修改密码；之后可在那里修改名称、登录邮箱和密码。初始化环境变量只用于首次创建，不会覆盖之后的账户变更。完整流程与忘记密码的本地恢复方式见[初始化指南](docs/initialization.md)。
 
-默认数据库 `./data/archive.sqlite`；迁移命令创建目录，应用请求不自动建表。`.env.local`、SQLite / WAL / SHM 文件已忽略。启动时校验认证和当前存储驱动配置，缺少必要项拒绝启动；生产构建无需密钥。没有为你创建真实管理员或保存任何测试账号到开发数据库。
-
-审核撤回的 CDN URL 清除是可选能力：仅在服务端配置 `CLOUDFLARE_ZONE_ID` 与 `CLOUDFLARE_CACHE_PURGE_TOKEN` 时调用 Cloudflare Zone Purge API；缺少配置会持久化 `not_configured` 状态，网络/API 失败会持久化失败任务，不会伪称旧缓存已立即失效。
+默认数据库 `./data/archive.sqlite`、本地图片 `./data/storage/`；SQLite 主文件/WAL/SHM、密钥、凭据和图片均不提交。重复启动保留全部数据。已有数据库升级前自动执行 SQLite 在线备份，备份失败则不启动应用。构建不需要真实密钥或数据库。审核撤回的 CDN URL 清除仍为可选能力，未配置或失败会持久记录，不会伪称旧缓存立即失效。
 
 ## 认证与安全
 
@@ -91,21 +81,22 @@ pnpm test:images
 
 ## 开发命令
 
-| 命令                                   | 用途                                                              |
-| -------------------------------------- | ----------------------------------------------------------------- |
-| `pnpm dev`                             | 开发服务器                                                        |
-| `pnpm typecheck` / `pnpm lint`         | 路由与严格类型检查 / ESLint                                       |
-| `pnpm format` / `pnpm format:check`    | 格式化 / 格式检查                                                 |
-| `pnpm test`                            | 临时 SQLite 的业务、认证、安全与迁移测试                          |
-| `pnpm check`                           | 类型、Lint、格式与集成测试                                        |
-| `pnpm build` / `pnpm start`            | standalone 生产构建 / 本地生产服务                                |
-| `pnpm build:native`                    | 编译迁移、构建并打包原生发行目录 `dist/native/`                   |
-| `pnpm test:auth-flow`                  | 先 build，再自动启动临时数据库生产服务做 HTTP 流程验证            |
-| `pnpm db:generate` / `pnpm db:migrate` | 生成 / 应用 Drizzle Migration                                     |
-| `pnpm db:studio` / `pnpm db:compile`   | 本地数据库工具 / 编译两种部署共用的迁移脚本                       |
-| `pnpm auth:secret` / `pnpm admin:init` | 生成认证密钥 / 安全初始化首个管理员                               |
-| `pnpm auth:check`                      | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
-| `pnpm auth:generate`                   | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
+| 命令                                            | 用途                                                              |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| `pnpm dev`                                      | 开发服务器                                                        |
+| `pnpm typecheck` / `pnpm lint`                  | 路由与严格类型检查 / ESLint                                       |
+| `pnpm format` / `pnpm format:check`             | 格式化 / 格式检查                                                 |
+| `pnpm test`                                     | 临时 SQLite 的业务、认证、安全与迁移测试                          |
+| `pnpm check`                                    | 类型、Lint、格式与集成测试                                        |
+| `pnpm build` / `pnpm start`                     | standalone 生产构建 / 本地生产服务                                |
+| `pnpm build:native`                             | 编译迁移、构建并打包原生发行目录 `dist/native/`                   |
+| `pnpm test:auth-flow`                           | 先 build，再自动启动临时数据库生产服务做 HTTP 流程验证            |
+| `pnpm db:generate` / `pnpm db:migrate`          | 生成 / 应用 Drizzle Migration                                     |
+| `pnpm db:studio` / `pnpm db:compile`            | 本地数据库工具 / 编译两种部署共用的迁移脚本                       |
+| `pnpm admin:credentials` / `pnpm admin:recover` | 本地领取初始凭据 / 可信 TTY 恢复现有管理员密码                    |
+| `pnpm auth:secret` / `pnpm admin:init`          | 手动维护密钥 / 旧式管理员初始化工具，正常首次启动无需执行         |
+| `pnpm auth:check`                               | 官方 CLI 校验认证 Schema，需要认证环境配置                        |
+| `pnpm auth:generate`                            | 认证升级时重新生成 Schema；先审阅差异，再生成新 Drizzle Migration |
 
 新增命令：`pnpm test:images`（图片、存储、投稿、审核、公开影像 Vitest，已加入 `pnpm check`）、`pnpm storage:check`（本地探测）。维护者配置真实 R2 后可主动执行 `pnpm storage:check --allow-r2`，只做 Bucket HEAD，不修改资源；本次未执行云检查。
 
@@ -150,19 +141,12 @@ data/                           # 持久化数据，不提交
 
 ## Docker Compose 部署
 
+填写私有 `.env.production` 中的实际 HTTPS 域名和生产 Turnstile 配置后：
+
 ```bash
 cp .env.production.example .env.production
 chmod 600 .env.production
-# 填写生产环境变量后：
-docker compose --env-file .env.production build app admin-init
-docker compose --env-file .env.production run --rm --no-deps --entrypoint node app migrations/scripts/migrate.js
-docker compose --env-file .env.production --profile admin run --rm --no-deps admin-init
-docker compose --env-file .env.production up -d --wait app
-docker compose --env-file .env.production ps
+docker compose --env-file .env.production up -d --build app
 ```
 
-该方式可部署在普通 Linux 服务器或其他支持 Docker / Docker Compose 的主机。Compose 要求传入认证配置和所选驱动配置，私有密钥仅运行时传递，不写入镜像。生产图片继续使用 Cloudflare R2，需完整 R2 配置；`STORAGE_DRIVER=local` 可用于本地生产验证或自托管，图片存入持久卷的 `/app/data/storage`，见存储指南。匿名投稿继续使用 Cloudflare Turnstile，生产需配置实际域名对应的 Site Key 和 Secret Key；投稿页按请求读取公开 Site Key，同一镜像可用于不同域名。应用容器非 root，启动前只读核对 Migration，然后执行 `node server.js`；迁移和首个管理员初始化是独立命令，失败时不启动新版本。SQLite 数据库在 `archive-data` 命名卷，备份在独立的 `archive-backups` 卷，默认端口绑定 `127.0.0.1:3000`。`admin-init` 仅是按需运行的可信 TTY 容器，不作为长期服务。
-
-公网访问由用户自行选择和配置的外部 HTTP/HTTPS 反向代理提供；本项目不管理代理或 TLS 证书。代理终止 HTTPS，通过 HTTP 转发到容器，并限制对应用端口的直接访问。将 `BETTER_AUTH_URL` 设置为真实公开 HTTPS origin；这也是 Next.js 公开页面 URL 与 Turnstile hostname 校验的来源，浏览器在此 origin 登录，Cookie 使用 Secure。应用不根据任意 Host / `X-Forwarded-*` 推断认证域名；仅在入口不可绕过、代理剥离并重写来源头后才配置 `TRUSTED_PROXY_IP_HEADER`。代理需设置与 52 MiB 投稿请求上限兼容的请求体限制和适合图片处理的 HTTP 超时；具体配置由代理维护者负责。无需 Cloudflare Tunnel 或 Zero Trust。
-
-更新前用 `migrations/scripts/backup-db.mjs` 执行 SQLite 在线备份，再停应用、构建、显式迁移和重启；恢复需停应用并确认恢复点之后的数据损失。不要运行 `docker compose down -v`，它会删除持久卷。构建不需要数据库、认证密钥或 R2 凭据。命令、故障排查和回滚边界见 [部署指南](docs/deployment.md)，设计与检查见 [架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[验证记录](docs/validation.md)、[开发约定](AGENTS.md)。
+容器启动前自动完成必要初始化，失败不会就绪；默认只把 HTTP 端口绑定到宿主机回环地址。自动生成的管理员密码使用 `docker compose --env-file .env.production exec app node migrations/scripts/admin-credentials.mjs` 在可信 TTY 领取。详细步骤、备份/更新/回滚见 [Docker 部署指南](docs/deployment.md)；原生服务参见 [Node.js + systemd 指南](docs/deployment-native.md)。两个方案均不配置外部代理、TLS 或 Cloudflare Tunnel。

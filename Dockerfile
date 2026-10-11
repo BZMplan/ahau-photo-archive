@@ -26,18 +26,23 @@ RUN mkdir -p .output/migration-node-modules/@next \
 
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/archive.sqlite
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/archive.sqlite NODE_BIN=/usr/local/bin/node
 RUN mkdir -p /app/data /app/backups && chown node:node /app/data /app/backups
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.output/migrations ./migrations
+COPY --from=builder --chown=node:node /app/.output/bootstrap.cjs ./migrations/bootstrap.cjs
+COPY --from=builder --chown=node:node /app/.output/admin-recover.cjs ./migrations/admin-recover.cjs
+COPY --chown=node:node scripts/start-production.sh ./start-production.sh
 COPY --from=builder --chown=node:node /app/.output/migration-node-modules ./migrations/node_modules
 COPY --chown=node:node scripts/backup-db.mjs ./migrations/scripts/backup-db.mjs
 COPY --chown=node:node scripts/restore-db.mjs ./migrations/scripts/restore-db.mjs
 COPY --chown=node:node scripts/check-migrations.mjs ./migrations/scripts/check-migrations.mjs
+COPY --chown=node:node scripts/read-secret.mjs ./migrations/scripts/read-secret.mjs
+COPY --chown=node:node scripts/admin-credentials.mjs ./migrations/scripts/admin-credentials.mjs
 COPY --from=builder --chown=node:node /app/drizzle ./drizzle
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["sh", "-c", "node migrations/scripts/check-migrations.mjs && exec node server.js"]
+CMD ["/bin/sh", "./start-production.sh"]
