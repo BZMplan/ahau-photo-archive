@@ -13,6 +13,7 @@ interface TurnstileWidgetProps {
 interface TurnstileApi {
   render: (element: HTMLElement, options: Record<string, unknown>) => string;
   reset: (widgetId?: string) => void;
+  remove: (widgetId: string) => void;
 }
 
 declare global {
@@ -29,30 +30,41 @@ export function TurnstileWidget({
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<string | undefined>(undefined);
+  const previousTokenRef = useRef(token);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     if (!siteKey || !loaded || !containerRef.current || !window.turnstile)
       return;
-    widgetRef.current = window.turnstile.render(containerRef.current, {
+    const widgetId = window.turnstile.render(containerRef.current, {
       sitekey: siteKey,
       action: "submit",
       theme: "auto",
+      size: "compact",
       callback: onToken,
       "expired-callback": () => onToken(""),
       "timeout-callback": () => onError("安全验证已超时，请重试。"),
       "error-callback": () => onError("安全验证暂时不可用，请重试。"),
     });
+    widgetRef.current = widgetId;
     return () => {
-      if (widgetRef.current) window.turnstile?.reset(widgetRef.current);
+      window.turnstile?.remove(widgetId);
+      if (widgetRef.current === widgetId) widgetRef.current = undefined;
     };
   }, [loaded, onError, onToken, siteKey]);
+  useEffect(() => {
+    const previous = previousTokenRef.current;
+    previousTokenRef.current = token;
+    // Tokens are single-use: a failed submission must request a fresh challenge.
+    if (previous && !token && widgetRef.current)
+      window.turnstile?.reset(widgetRef.current);
+  }, [token]);
   return (
     <div className="space-y-2">
       <Script
         src="https://challenges.cloudflare.com/turnstile/v0/api.js"
         async
         defer
-        onLoad={() => setLoaded(true)}
+        onReady={() => setLoaded(true)}
       />
       <div ref={containerRef} aria-label="人机验证" />
       {!siteKey && (

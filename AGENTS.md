@@ -30,6 +30,12 @@
 - 状态和日志在同一同步事务中；保留原图及历史。认证 ID 为 UUID 文本。当前 photos 的 reviewed_by/reviewed_at/rejection_reason/publication_id 由 0004 增量迁移提供，日志 admin_id 保留文本以兼容历史，不直接重建或删除既有记录。
 - 数据库在 `data/` 或 `DATABASE_PATH` 的持久化目录，生产迁移先备份。数据库、上传、密钥、构建产物不提交。
 
+## 投稿前台
+
+- `/submit` 保持全屏双栏编辑器：桌面左侧约 65% 原生垂直 Scroll Snap、右侧约 35% 独立滚动信息区；手机上下布局。不得重新引入传统居中长表单。
+- 当前照片以稳定 UUID 和 IntersectionObserver 联动，导航必须同步真实滚动位置；每张元数据按 ID 保存并按文件顺序提交。不得破坏图片/字段联动或让批次公共信息随照片切换重置。
+- 图片完整显示且无圆角；添加、确认删除、卸载及成功受理时管理 Object URL 生命周期。错误须定位具体照片与字段，失败保留草稿；沿用现有 Schema、API、数量限制、授权、Turnstile 和私有 pending 流程，不扩展匿名投稿标签契约。AHAU 保持不可拆分。
+
 ## API 与权限
 
 - `app/api` 成功 `{ data: ... }`，失败 `{ error: { code, message } }`，使用准确状态码；未开放返回 501。
