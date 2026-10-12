@@ -18,7 +18,7 @@ export function PhotoPreview({
       {failedUrl === item.previewUrl ? (
         <p
           role="status"
-          className="absolute inset-0 flex items-center justify-center p-5 text-center text-sm text-white/70"
+          className="text-muted-foreground absolute inset-0 flex items-center justify-center p-5 text-center text-sm"
         >
           无法预览这张照片，请检查图片文件。
         </p>

@@ -5,7 +5,7 @@
 ## 全屏投稿编辑器
 
 AHAU 是 Anhui Agricultural University（安徽农业大学）的完整缩写，所有界面文字保持整体。
-`/submit` 复用公共紧凑导航，隐藏该页面的页脚和顶部大介绍。主体填满剩余动态视口：桌面 65% 图片区 / 35% 信息区，平板约 60% / 40%，768px 以下改为上方预览、下方表单。左右没有卡片阴影，只以细线区隔；照片始终直角、object-contain 完整展示。输入框/按钮仍可使用轻微圆角。
+`/submit` 复用公共紧凑导航，隐藏该页面的页脚和顶部大介绍。主体填满剩余动态视口：桌面 65% 图片区 / 35% 信息区，平板约 60% / 40%，768px 以下改为上方预览、下方表单。预览区背景、文字、工具栏、分隔线和滚动条复用网站主题变量，随浅色/深色主题同步切换。左右没有卡片阴影，只以细线区隔；照片始终直角、object-contain 完整展示。输入框/按钮仍可使用轻微圆角。
 
 图片区原生 overflow-y: auto、scroll-snap-type: y mandatory，每个稳定 UUID 的 slide 占该滚动容器完整高度，并使用 scroll-snap-align: start 与 scroll-snap-stop: always。鼠标/触控板/触摸交给浏览器，不截获 wheel。IntersectionObserver 的 root 是左侧容器，60% 可见比例避免相邻照片在中点反复切换；scrollend 以容器中心确认最终选中。上一张/下一张通过统一 scrollToPhoto 实际滚动，由相同 observer 更新当前 ID；减少动画偏好使用即时滚动。ResizeObserver 在容器高度变化时重新对齐当前照片。
 

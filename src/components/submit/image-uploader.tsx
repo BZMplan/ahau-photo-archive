@@ -102,10 +102,10 @@ export function ImageUploader({
           <span className="text-2xl font-medium tracking-tight sm:text-3xl">
             添加你的校园影像
           </span>
-          <span className="mt-4 text-sm text-white/60">
+          <span className="text-muted-foreground mt-4 text-sm">
             拖拽照片到此处，或点击选择文件。
           </span>
-          <span className="mt-3 text-xs text-white/40">
+          <span className="text-muted-foreground mt-3 text-xs">
             JPEG、PNG、WebP · 最多 {MAX_SUBMISSION_PHOTOS} 张 · 单张 {maxMiB}{" "}
             MiB
           </span>
@@ -124,7 +124,7 @@ export function ImageUploader({
             type="button"
             variant="ghost"
             disabled={disabled || items.length >= MAX_SUBMISSION_PHOTOS}
-            className="text-white hover:bg-white/10 hover:text-white"
+            className="text-foreground hover:bg-muted hover:text-foreground"
             onClick={() => inputRef.current?.click()}
           >
             <ImagePlus aria-hidden="true" className="size-4" />

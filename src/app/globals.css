@@ -616,8 +616,8 @@ body:has(.submission-editor) {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  background: #202322;
-  color: #faf9f6;
+  background: var(--background);
+  color: var(--foreground);
 }
 .submission-upload-empty {
   display: flex;
@@ -636,7 +636,7 @@ body:has(.submission-editor) {
   overscroll-behavior-y: contain;
   scroll-snap-type: y mandatory;
   scrollbar-width: thin;
-  scrollbar-color: #67716b transparent;
+  scrollbar-color: var(--muted-foreground) transparent;
 }
 .submission-photo-slide {
   height: 100%;
@@ -656,20 +656,20 @@ body:has(.submission-editor) {
 }
 .submission-viewer-tools {
   padding: 10px 20px calc(10px + env(safe-area-inset-bottom));
-  border-top: 1px solid rgb(255 255 255 / 10%);
+  border-top: 1px solid var(--border);
 }
 .submission-viewer-button {
-  color: white;
+  color: var(--foreground);
 }
 .submission-viewer-button:hover {
-  background: rgb(255 255 255 / 10%);
-  color: white;
+  background: var(--muted);
+  color: var(--foreground);
 }
 .submission-upload-errors {
   max-height: 80px;
   overflow-y: auto;
   padding: 0 12px 10px;
-  color: #ffd1ba;
+  color: var(--destructive);
   font-size: 12px;
   line-height: 1.6;
 }

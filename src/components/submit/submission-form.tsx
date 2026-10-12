@@ -306,7 +306,7 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
           items.length ? (
             <div className="flex items-center gap-2">
               <span
-                className="mr-2 font-mono text-xs text-white/60"
+                className="text-muted-foreground mr-2 font-mono text-xs"
                 aria-hidden="true"
               >
                 {String(activeIndex + 1).padStart(2, "0")} /{" "}
@@ -350,7 +350,9 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
               </Button>
             </div>
           ) : (
-            <span className="text-xs text-white/40">LOCAL PREVIEW ONLY</span>
+            <span className="text-muted-foreground text-xs">
+              LOCAL PREVIEW ONLY
+            </span>
           )
         }
       >
