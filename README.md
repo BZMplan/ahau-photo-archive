@@ -6,6 +6,14 @@
 
 第五阶段审核发布能力继续保留。在第四阶段匿名投稿基础上，支持管理员审核队列、私有预览、元数据/标签编辑、批准/拒绝、版本化公开衍生图、撤回/恢复、并发状态保护、审核日志、真实状态统计和可选 Cloudflare URL 级缓存清除。新投稿仍先进入 `pending`，原图永远保持私有。
 
+## 前台浏览
+
+AHAU 是 Anhui Agricultural University（安徽农业大学）的完整英文缩写，品牌保持不可拆分。
+首页 `/` 为全屏文字开场：学校名称、简短介绍、浏览影像档案与投稿入口；不查询、展示或预取照片列表，也没有照片背景。
+所有公开照片以 `/archive` 为主要入口：全宽 CSS Columns 瀑布流、原始宽高比、直角摄影作品，无卡片背景和阴影。响应式列数为窄屏 1、手机 2、平板 3、桌面 4、宽屏 5、超宽屏 6。
+底部悬浮 Dock 集中提供年份、季节、地点、标签、排序和重置；桌面向上弹层，手机集中抽屉，地点与标签可搜索。筛选由 URL Search Params 管理，自动更新、可分享、刷新和前进后退；继续使用原有服务端分页及 `published-desc` / `published-asc` / `taken-desc` / `taken-asc` 参数。
+详情页与 Lightbox 保留大图、元数据及相关照片，并携带校验后的档案筛选返回链接。公开条件仍是 approved 且公开衍生资源完整；原图、联系方式与审核信息始终私有。详细规则与验收见 [公开影像指南](docs/gallery.md)。
+
 ## 技术栈
 
 TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；生产可用 Docker Compose 或原生 Node.js + systemd 单实例部署，由外部 HTTP/HTTPS 反向代理提供公网入口。

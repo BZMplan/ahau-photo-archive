@@ -57,6 +57,11 @@
 
 ## 公开展示
 
+- AHAU 是 Anhui Agricultural University（安徽农业大学）的完整英文缩写，必须作为不可拆分的品牌词使用，禁止写成 AH AU。
+- 首页只展示全屏开场介绍和档案/投稿入口，不查询、渲染或预取摄影作品，不使用照片背景。`/archive` 是公开照片的主要展示入口。
+- 影像档案使用全宽 CSS Columns 瀑布流，摄影作品保留原始宽高比，图片、详情主图及 Lightbox 的 border-radius 必须为 0；不统一裁切、不加卡片背景或阴影。列内从上到下、再向右的视觉顺序与 DOM/键盘顺序一致。
+- 筛选通过底部悬浮 Dock 提供，桌面向上 Popover、手机集中抽屉；共用 URL Search Params 与既有查询/分页规范。底部预留 Dock 和 safe-area 空间。禁止重新引入顶部大型筛选表单。
+- 公开权限继续以 approved 与完整公开资源为准，禁止公开未经审核或已撤回的照片；本次前台样式约定不改变投稿、审核、认证与存储边界。
 - 公开查询统一经 services/public-photos，共用 approved 与完整公开资源条件；DTO 字段白名单，禁止输出私有 Key、投稿联系方式、审核历史或管理员信息。
 - 页面仅使用 storage/urls 生成的批准衍生图 URL，不读取私有原图；thumbnail 用于照片墙、display 用于详情，保留宽高比与失败占位。
 - 列表分页有上限，筛选/排序在 SQL 执行，时间排序附加唯一 ID；takenAt 为日历日期，空日期不归入年份/季节。地点复用 normalizeLocation。

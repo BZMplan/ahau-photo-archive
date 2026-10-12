@@ -8,7 +8,7 @@ export default function SubmitPage() {
   const siteKeyName = "NEXT_PUBLIC_TURNSTILE_SITE_KEY";
   const siteKey = process.env[siteKeyName] ?? "";
   return (
-    <div className="py-12 sm:py-16">
+    <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10 sm:py-16">
       <Badge variant="outline">匿名投稿</Badge>
       <h1 className="mt-5 text-3xl font-medium tracking-tight">投稿校园影像</h1>
       <p className="text-muted-foreground mt-4 text-sm leading-7">

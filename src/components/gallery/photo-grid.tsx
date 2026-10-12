@@ -1,39 +1,50 @@
 import Link from "next/link";
-import { EmptyState } from "@/components/empty-state";
 import { PhotoCard } from "@/components/gallery/photo-card";
 import { buttonVariants } from "@/components/ui/button";
 import type { PublicPhoto } from "@/types/photo";
 
 export function PhotoGrid({
   photos,
-  emptyTitle = "档案的第一帧，留给你",
-  emptyDescription = "这里还没有公开的照片。未来每一张投稿都会经过审核，再成为校园影像档案的一部分。",
+  emptyTitle = "尚未收录校园影像。",
+  emptyDescription = "欢迎分享你镜头中的安徽农业大学。",
+  archiveReturn,
+  filtered = false,
 }: {
   photos: PublicPhoto[];
   emptyTitle?: string;
   emptyDescription?: string;
+  archiveReturn?: string;
+  filtered?: boolean;
 }) {
   if (!photos.length)
     return (
-      <EmptyState
-        title={emptyTitle}
-        description={emptyDescription}
-        action={
-          <Link
-            href="/submit"
-            className={buttonVariants({ variant: "outline" })}
-          >
-            了解如何投稿
-          </Link>
-        }
-      />
+      <div className="archive-empty">
+        <p className="text-muted-foreground mb-8 font-mono text-xs tracking-widest">
+          THE ARCHIVE / 00
+        </p>
+        <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">
+          {emptyTitle}
+        </h2>
+        <p className="text-muted-foreground mt-4 max-w-md text-sm leading-7">
+          {emptyDescription}
+        </p>
+        <Link
+          href={filtered ? "/archive" : "/submit"}
+          className={buttonVariants({ variant: "outline", className: "mt-8" })}
+        >
+          {filtered ? "清除筛选" : "分享校园影像"}
+        </Link>
+      </div>
     );
   return (
-    <div className="grid items-start gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {photos.map((photo) => (
-        <div key={photo.id} className="mb-8">
-          <PhotoCard photo={photo} />
-        </div>
+    <div className="masonry-gallery" aria-label="公开影像照片墙">
+      {photos.map((photo, index) => (
+        <PhotoCard
+          key={photo.id}
+          photo={photo}
+          priority={index === 0}
+          archiveReturn={archiveReturn}
+        />
       ))}
     </div>
   );

@@ -1,8 +1,8 @@
 import Link from "next/link";
 export function SiteFooter() {
   return (
-    <footer className="mt-auto border-t">
-      <div className="text-muted-foreground mx-auto flex max-w-7xl flex-col gap-4 px-6 py-7 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-10">
+    <footer className="site-footer mt-auto">
+      <div className="text-muted-foreground flex flex-col gap-4 px-5 py-7 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p>
           AHAU Photo Archive <span className="mx-2">/</span>{" "}
           为校园留一份影像记忆

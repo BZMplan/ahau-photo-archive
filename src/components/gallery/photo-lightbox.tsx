@@ -19,7 +19,7 @@ export function PhotoLightbox({ photo }: { photo: PhotoImageData }) {
         type="button"
         onClick={() => dialog.current?.showModal()}
         aria-label={"放大查看：" + photo.title}
-        className="mx-auto block w-full cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4"
+        className="mx-auto block w-full cursor-zoom-in rounded-none focus-visible:outline-2 focus-visible:outline-offset-4"
         style={{ maxWidth: `min(100%, ${ratio * 72}svh)` }}
       >
         <PhotoImage
@@ -27,7 +27,7 @@ export function PhotoLightbox({ photo }: { photo: PhotoImageData }) {
           variant="display"
           onRatioChange={setRatio}
           priority
-          className="w-full rounded-lg"
+          className="w-full rounded-none"
         />
       </button>
       <p className="text-muted-foreground mt-3 text-center text-xs">

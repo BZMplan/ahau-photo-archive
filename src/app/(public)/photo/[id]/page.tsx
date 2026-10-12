@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { archiveReturnHref } from "@/lib/archive-navigation";
 import { notFound } from "next/navigation";
 import { PhotoGrid } from "@/components/gallery/photo-grid";
 import { PhotoLightbox } from "@/components/gallery/photo-lightbox";
@@ -38,21 +39,28 @@ function formatDate(value: string | null) {
   return value || "未知";
 }
 
-export default async function PhotoPage({ params }: { params: Params }) {
+export default async function PhotoPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
   const photo = findPublicPhoto(id);
   if (!photo) notFound();
   const related = getRelatedPhotos(photo.id);
+  const returnHref = archiveReturnHref((await searchParams).from);
 
   return (
-    <article className="py-10 sm:py-14">
+    <article className="px-4 py-8 sm:px-6 sm:py-10">
       <Link
-        href="/archive"
+        href={returnHref}
         className="text-muted-foreground hover:text-foreground text-sm"
       >
         ← 返回影像档案
       </Link>
-      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-14">
+      <div className="mt-8 grid gap-10 xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-14">
         <PhotoLightbox
           photo={{
             title: photo.title,
@@ -95,7 +103,7 @@ export default async function PhotoPage({ params }: { params: Params }) {
             </div>
           </dl>
           {photo.tags.length ? (
-            <div className="mt-10 border-t pt-6">
+            <div className="mt-10 pt-6">
               <h2 className="text-muted-foreground text-xs tracking-[0.16em]">
                 标签
               </h2>
@@ -104,7 +112,7 @@ export default async function PhotoPage({ params }: { params: Params }) {
                   <Link
                     key={photo.tagSlugs[index] || tag}
                     href={"/tags/" + encodeURIComponent(photo.tagSlugs[index])}
-                    className="hover:bg-muted rounded-full border px-3 py-1.5 text-xs"
+                    className="text-muted-foreground hover:text-foreground py-1.5 text-xs underline decoration-current/30 underline-offset-4"
                   >
                     {tag}
                   </Link>
@@ -115,7 +123,7 @@ export default async function PhotoPage({ params }: { params: Params }) {
         </div>
       </div>
       {related.length ? (
-        <section className="mt-20 border-t pt-10">
+        <section className="mt-20 pt-10">
           <div className="mb-8 flex items-baseline justify-between">
             <h2 className="text-xl font-medium">更多影像</h2>
             <p className="text-muted-foreground text-xs">相同地点或标签</p>

@@ -21,7 +21,7 @@ Next.js Application（Docker Compose 或原生 systemd，单实例）
 
 Docker 容器和原生 systemd 均在启动 HTTP 应用前运行同一 BootstrapService：检查密钥、数据库、存储、管理员，必要时先在线备份再执行待应用的 Drizzle Migration；失败则不启动 Next.js。运行时访问 R2 和 Turnstile；项目不管理 TLS 证书。外部反向代理由部署者选择、配置和维护，负责公网 HTTP/HTTPS 入口、TLS 终止、转发、上传请求体限制与 HTTP 超时；项目不提供代理配置或代理容器。应用端口只允许可信代理访问，Compose 默认绑定主机 loopback。部署可运行在普通 Linux 服务器或其他支持 Docker 的主机，不依赖 Cloudflare Tunnel 或 Cloudflare Zero Trust。
 
-页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 限于主题、登录、退出和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
+页面/API 保持薄，业务在 `server/services`，认证在 `server/auth`。入口以 `server-only` 阻止浏览器导入；`auth/options.ts`、`auth/environment.ts` 和底层数据库支持可信 CLI / 测试。Client Components 用于主题、登录、退出、投稿表单、图片加载、Lightbox、Dock 交互和错误重试；不会将数据库连接、哈希或认证 Token 传入客户端。
 
 | 模块                                            | 状态                                                |
 | ----------------------------------------------- | --------------------------------------------------- |
@@ -180,4 +180,4 @@ Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流�
 
 ## 第六阶段公开展示
 
-公开页、Metadata、筛选项与 sitemap 的照片读取统一通过 services/public-photos。SQL 分页/排序/组合筛选和白名单 DTO；标签批量关联，地点用连接注册的确定性 normalize_location 函数统一历史文本。已有索引足够，不新增 Migration。公开页 force-dynamic，仅 React cache 请求内去重；审核 revalidatePath 覆盖档案/详情/标签/sitemap，与 Cloudflare purge 分开。next/image unoptimized 直接读取既有公开 WebP，网格保留比例，客户端边界仅图片加载状态与原生 dialog。详见 [公开影像指南](gallery.md)。
+首页只提供全屏开场文字和导航入口，不查询或展示照片；AHAU 是安徽农业大学不可拆分的英文缩写。`/archive` 是公开照片的主要展示入口，以无最大宽度限制的 CSS Columns 瀑布流展示直角、原始比例的摄影作品。详情、标签页复用照片组件；后台视觉不受公共主题影响。底部悬浮 Dock 的桌面 Popover 与手机 Dialog 抽屉共用一套服务端解析的 URL 筛选状态，只有弹层、搜索输入与导航 pending 状态存于客户端。筛选变化通过 router.push 更新 Search Params，服务器重新查询并重置页码；分页和详情返回链接保留条件。公开页、Metadata、筛选项与 sitemap 的照片读取统一通过 services/public-photos。SQL 分页/排序/组合筛选和白名单 DTO；标签批量关联，地点用连接注册的确定性 normalize_location 函数统一历史文本。已有索引足够，不新增 Migration。照片相关公开页 force-dynamic，首页静态；仅 React cache 请求内去重；审核 revalidatePath 覆盖档案/详情/标签/sitemap，与 Cloudflare purge 分开。next/image unoptimized 直接读取既有公开 WebP，照片保留比例且无圆角，客户端边界包括图片加载、原生 Lightbox dialog 与 Dock 的 Radix 弹层。详见 [公开影像指南](gallery.md)。

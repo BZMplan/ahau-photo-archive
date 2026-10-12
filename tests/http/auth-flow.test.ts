@@ -413,12 +413,22 @@ test("real HTTP moderation flow publishes, hides and restores a local photo", as
   ]) {
     const response = await get(path);
     assert.equal(response.status, 200, path);
-    assert.match(
-      response.headers.get("cache-control") || "",
-      /no-store|private/,
-    );
+    if (path !== "/")
+      assert.match(
+        response.headers.get("cache-control") || "",
+        /no-store|private/,
+      );
     const html = await response.text();
-    assert.ok(html.includes(id), path);
+    if (path === "/") {
+      assert.ok(!html.includes(id), "Landing must not serialize any photo");
+      assert.ok(!/<img\b/.test(html), "Landing must not render images");
+      assert.ok(html.includes("安徽农业大学影像档案馆"));
+      assert.ok(html.includes("浏览影像档案"));
+      assert.ok(html.includes('href="/archive"'));
+      assert.ok(html.includes('href="/submit"'));
+    } else {
+      assert.ok(html.includes(id), path);
+    }
     assert.ok(!html.includes(originalKey));
     assert.ok(!html.includes(previewKey));
     if (path.startsWith("/photo/")) assert.ok(html.includes("og:image"));

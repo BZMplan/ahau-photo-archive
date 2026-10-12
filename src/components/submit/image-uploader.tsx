@@ -104,7 +104,7 @@ export function ImageUploader({
               key={item.id}
             >
               <Image
-                className="size-20 rounded object-cover"
+                className="size-20 rounded-none object-contain"
                 src={item.previewUrl}
                 alt=""
                 width={80}

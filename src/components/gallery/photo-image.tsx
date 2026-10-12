@@ -34,7 +34,8 @@ export function PhotoImage({
   return (
     <span
       className={
-        "bg-muted relative block overflow-hidden " + (className ?? "w-full")
+        "bg-muted relative block overflow-hidden rounded-none " +
+        (className ?? "w-full")
       }
       style={{ aspectRatio: ratio }}
     >
@@ -54,7 +55,7 @@ export function PhotoImage({
           sizes={
             variant === "display"
               ? "(max-width: 1024px) 100vw, 75vw"
-              : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+              : "(max-width: 359px) 100vw, (max-width: 767px) 50vw, (max-width: 1099px) 33vw, (max-width: 1599px) 25vw, (max-width: 2199px) 20vw, 17vw"
           }
           unoptimized
           loading={priority ? "eager" : "lazy"}
@@ -70,7 +71,7 @@ export function PhotoImage({
           }}
           onError={() => setFailedSrc(src)}
           className={
-            "absolute inset-0 h-full w-full object-contain transition-opacity motion-reduce:transition-none " +
+            "absolute inset-0 h-full w-full rounded-none object-contain transition-opacity motion-reduce:transition-none " +
             (loadedSrc === src ? "opacity-100" : "opacity-0")
           }
         />

@@ -45,7 +45,7 @@ export default async function TagPage({
   const result = getPublishedPhotos(query);
 
   return (
-    <div className="py-12 sm:py-16">
+    <div className="px-3 py-10 sm:px-5 sm:py-12">
       <header className="border-b pb-10">
         <Link
           href="/archive"

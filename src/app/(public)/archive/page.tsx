@@ -1,8 +1,8 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { ArchiveFilters } from "@/components/archive/archive-filters";
+import { FilterDock } from "@/components/archive/filter-dock";
 import { ArchivePagination } from "@/components/archive/archive-pagination";
 import { PhotoGrid } from "@/components/gallery/photo-grid";
+import { archiveHref } from "@/lib/validations/archive";
 import {
   getArchiveFilters,
   getPublishedPhotos,
@@ -10,89 +10,65 @@ import {
 } from "@/server/services/public-photos";
 
 export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
   title: "影像档案",
-  description: "沿着时间、季节、地点与标签，重新发现校园的不同模样。",
+  description: "沿着时间、季节、地点与标签，重新发现安徽农业大学的不同模样。",
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-function firstValues(
-  input: Record<string, string | string[] | undefined>,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(input).flatMap(([key, value]) =>
-      typeof value === "string" ? [[key, value]] : [],
-    ),
-  );
-}
 
 export default async function ArchivePage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const raw = firstValues(await searchParams);
+  const raw = Object.fromEntries(
+    Object.entries(await searchParams).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
   const query = parseArchiveQuery(raw);
   const result = getPublishedPhotos(query);
   const filters = getArchiveFilters();
   const hasFilters = Boolean(
     query.year || query.season || query.location || query.tag,
   );
-
   return (
-    <div className="py-12 sm:py-16">
-      <header className="border-b pb-10">
-        <p className="text-muted-foreground mb-4 text-xs tracking-[0.24em]">
-          THE ARCHIVE
-        </p>
-        <h1 className="text-4xl font-medium tracking-tight sm:text-5xl">
-          影像档案
-        </h1>
-        <p className="text-muted-foreground mt-5 max-w-xl text-sm leading-7">
-          在这里，沿着时间与地点，重新发现校园的不同模样。
+    <div className="archive-page">
+      <header className="archive-heading">
+        <div className="flex items-baseline gap-4">
+          <h1 className="text-2xl font-medium tracking-tight">影像档案</h1>
+          <span className="text-muted-foreground hidden font-mono text-[10px] tracking-widest sm:inline">
+            THE ARCHIVE
+          </span>
+        </div>
+        <p className="text-muted-foreground text-xs" aria-live="polite">
+          {result.total} 张公开影像{hasFilters ? " · 当前筛选结果" : ""}
+          <span className="ml-4">
+            {result.page} / {result.pageCount}
+          </span>
         </p>
       </header>
-      <section className="py-8" aria-label="影像筛选">
-        <ArchiveFilters
-          query={query}
-          years={filters.years}
-          locations={filters.locations}
-          tags={filters.tags}
-        />
-      </section>
-      <div className="mb-8 flex flex-wrap items-baseline justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          {result.total} 张公开影像
-          {hasFilters ? " · 当前筛选结果" : ""}
-        </p>
-        <p className="text-muted-foreground text-xs">
-          第 {result.page} / {result.pageCount} 页
-        </p>
-      </div>
       <PhotoGrid
         photos={result.items}
+        archiveReturn={archiveHref(query, result.page)}
+        filtered={hasFilters}
         emptyTitle={
-          hasFilters ? "没有找到符合条件的照片" : "还没有收录的校园影像"
+          hasFilters ? "没有找到符合条件的影像。" : "尚未收录校园影像。"
         }
         emptyDescription={
           hasFilters
-            ? "请尝试调整年份、季节、地点或标签，也可以清除筛选条件。"
-            : "欢迎成为第一位投稿者，让一段校园记忆从这里开始。"
+            ? "换一个时间、地点或标签，发现校园的另一面。"
+            : "欢迎分享你镜头中的安徽农业大学。"
         }
       />
-      {hasFilters && !result.items.length ? (
-        <div className="mt-6 text-center">
-          <Link
-            className="text-sm underline underline-offset-4"
-            href="/archive"
-          >
-            清除筛选条件
-          </Link>
-        </div>
-      ) : null}
       <ArchivePagination query={query} result={result} />
+      <FilterDock
+        query={query}
+        years={filters.years}
+        locations={filters.locations}
+        tags={filters.tags}
+      />
     </div>
   );
 }
