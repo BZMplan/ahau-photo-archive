@@ -787,3 +787,9 @@ body:has(.submission-editor) {
     padding: 2px 8px;
   }
 }
+
+.catalog-suggestions {
+  width: var(--radix-popover-trigger-width);
+  max-height: min(260px, var(--radix-popover-content-available-height));
+  overscroll-behavior: contain;
+}

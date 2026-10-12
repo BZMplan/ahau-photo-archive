@@ -57,7 +57,7 @@ photos/{photoId}/{publicationId}/thumbnail.webp
 
 ## 拒绝、元数据和标签
 
-拒绝只允许 pending，保存最多 1000 字符的原因，保留原图/预览以便复核；本阶段没有自动清理任务。编辑不重新上传图片，Zod 校验标题、描述、日期、地点和最多 20 个标签。标签会去除首尾空格、合并连续空白并统一大小写后去重，再在同一 SQLite 事务中维护 `tags` 与 `photo_tags`。
+拒绝只允许 pending，保存最多 1000 字符的原因，保留原图/预览以便复核；本阶段没有自动清理任务。编辑不重新上传图片，Zod 校验标题、描述、日期、locationId 和最多 20 个不重复 tagIds。地点和标签复用投稿的输入自动补全，只搜索启用目录；新增目录在地点/标签管理页完成，审核表单不再接收自由文本地点或标签。服务端事务验证 ID 存在及状态，维护 photos/location_id 与 photo_tags，同时记录名称和 ID 变化；不在审核事务中创建 tags。已有禁用关系允许原样保留，不能新增到其他照片。未传 locationId 保留历史地点；显式 null 清除，选新 ID 后关联规范地点。
 
 `moderation_logs` 保留 `photo_id`、`admin_id`、action、前后状态、原因、时间和 `metadata_changes`。日志只追加，不提供修改或删除接口；编辑信息也写入 `edit` 日志。
 
@@ -79,3 +79,5 @@ pnpm dev
 可通过第四阶段 `/submit` 提交测试照片，管理员登录后按以下顺序验收：在 `/admin/reviews` 查看 pending 私有预览；编辑标题和标签；批准一张、拒绝一张、保留一张；确认批准照片产生公开 WebP、拒绝/待审核照片没有公开 Key；在 `/admin/photos` 撤回并恢复批准照片，检查隐藏状态、私有原图保留和新的 publicationId；在详情页检查每一步的审核日志。自动化等价场景在 `tests/moderation/moderation.test.ts` 使用临时 SQLite/LocalStorage 完成，不连接真实云服务。
 
 生产部署前还应配置最小权限 R2 Token、验证私有桶匿名不可读、配置可选 Zone Purge Token，并执行一次隔离的失败恢复演练。管理员原图下载、批量审核、重新打开 rejected、自动清理和多副本分布式锁尚未实现。
+
+目录管理、历史别名与审核自动补全详见 [目录指南](catalog.md)。审核详情与列表 DTO 提供选中目录 ID、名称、slug、状态，仍不暴露存储 Key；公开展示继续只允许 approved。

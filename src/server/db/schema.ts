@@ -91,6 +91,39 @@ export const submissionRateLimits = sqliteTable(
   (table) => [index("submission_rate_limits_updated_idx").on(table.updatedAt)],
 );
 
+export const locations = sqliteTable(
+  "locations",
+  {
+    id: uuid(),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description"),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("locations_name_unique").on(table.name),
+    uniqueIndex("locations_normalized_name_unique").on(table.normalizedName),
+    uniqueIndex("locations_slug_unique").on(table.slug),
+    index("locations_active_sort_idx").on(
+      table.isActive,
+      table.sortOrder,
+      table.id,
+    ),
+    check(
+      "locations_name_check",
+      sql`length(trim(${table.name})) > 0 and length(${table.normalizedName}) > 0`,
+    ),
+    check("locations_active_check", sql`${table.isActive} in (0, 1)`),
+    check("locations_sort_check", sql`${table.sortOrder} >= 0`),
+  ],
+);
+
 export const photos = sqliteTable(
   "photos",
   {
@@ -101,6 +134,9 @@ export const photos = sqliteTable(
     title: text("title").notNull(),
     description: text("description"),
     location: text("location"),
+    locationId: text("location_id").references(() => locations.id, {
+      onDelete: "restrict",
+    }),
     // Date-only value avoids inventing a timezone or precision for historical photos.
     takenAt: text("taken_at"),
     status: text("status", { enum: photoStatuses })
@@ -132,6 +168,7 @@ export const photos = sqliteTable(
     index("photos_status_published_idx").on(table.status, table.publishedAt),
     index("photos_status_taken_idx").on(table.status, table.takenAt),
     index("photos_status_location_idx").on(table.status, table.location),
+    index("photos_location_id_idx").on(table.locationId, table.status),
     uniqueIndex("photos_original_key_unique").on(table.originalKey),
     uniqueIndex("photos_preview_key_unique").on(table.previewKey),
     uniqueIndex("photos_display_key_unique").on(table.displayKey),
@@ -188,11 +225,22 @@ export const tags = sqliteTable(
     id: uuid(),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
+    // Null is reserved for historical aliases whose relations must remain intact.
+    normalizedName: text("normalized_name"),
+    description: text("description"),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`0`)
+      .$defaultFn(() => new Date()),
   },
   (table) => [
     uniqueIndex("tags_name_unique").on(table.name),
     uniqueIndex("tags_slug_unique").on(table.slug),
+    uniqueIndex("tags_normalized_name_unique").on(table.normalizedName),
+    index("tags_active_sort_idx").on(table.isActive, table.sortOrder, table.id),
   ],
 );
 

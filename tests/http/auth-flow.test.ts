@@ -178,7 +178,13 @@ test("public pages and real login form load without a session", async () => {
 });
 
 test("all protected pages redirect anonymous requests and API returns 401", async () => {
-  for (const path of ["/admin", "/admin/reviews", "/admin/photos"])
+  for (const path of [
+    "/admin",
+    "/admin/reviews",
+    "/admin/photos",
+    "/admin/locations",
+    "/admin/tags",
+  ])
     await assertLoginRedirect(path);
   assert.equal((await get("/api/admin/me")).status, 401);
 });
@@ -222,7 +228,13 @@ test("failed login returns 401; admin login survives refreshed pages and redirec
 
 test("non-admin pages are refused and API returns 403", async () => {
   const cookie = await signIn("visitor@example.invalid");
-  for (const path of ["/admin", "/admin/reviews", "/admin/photos"])
+  for (const path of [
+    "/admin",
+    "/admin/reviews",
+    "/admin/photos",
+    "/admin/locations",
+    "/admin/tags",
+  ])
     await assertLoginRedirect(path, cookie);
   assert.equal((await get("/api/admin/me", cookie)).status, 403);
   assert.match(
@@ -232,6 +244,58 @@ test("non-admin pages are refused and API returns 403", async () => {
   await post("/api/auth/sign-out", {}, cookie);
 });
 
+test("managed catalog routes enforce real Better Auth sessions and refresh public options", async () => {
+  const admin = await signIn();
+  const visitor = await signIn("visitor@example.invalid");
+  for (const kind of ["locations", "tags"]) {
+    assert.equal(
+      (await post(`/api/${kind}`, { name: "Forbidden public create" })).status,
+      405,
+    );
+    const path = `/api/admin/${kind}`;
+    assert.equal((await post(path, { name: "Unauthorized" })).status, 401);
+    assert.equal(
+      (await post(path, { name: "Unauthorized", role: "admin" }, visitor))
+        .status,
+      403,
+    );
+    const created = await post(
+      path,
+      { name: `HTTP managed ${kind}`, description: "目录说明" },
+      admin,
+    );
+    assert.equal(created.status, 201);
+    const item = (await created.json()).data.item;
+    assert.equal((await get(`/admin/${kind}`, admin)).status, 200);
+    assert.equal(
+      (await post(path, { name: ` HTTP managed ${kind} ` }, admin)).status,
+      409,
+    );
+    const patch = (isActive: boolean) =>
+      fetch(`${origin}${path}/${item.id}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: admin,
+          Origin: origin,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: `HTTP edited ${kind}`, isActive }),
+      });
+    assert.equal((await patch(false)).status, 200);
+    assert.equal(
+      (await (await get(`/api/${kind}?q=HTTP%20edited`)).json()).data.items
+        .length,
+      0,
+    );
+    assert.equal((await patch(true)).status, 200);
+    const options = (await (await get(`/api/${kind}?q=HTTP%20edited`)).json())
+      .data.items;
+    assert.equal(options[0].id, item.id);
+    assert.deepEqual(Object.keys(options[0]).sort(), ["id", "name", "slug"]);
+  }
+  await post("/api/auth/sign-out", {}, visitor);
+  await post("/api/auth/sign-out", {}, admin);
+});
 test("expired session refuses pages and API", async () => {
   const cookie = await signIn();
   db.update(session)
@@ -446,9 +510,8 @@ test("real HTTP moderation flow publishes, hides and restores a local photo", as
     body: JSON.stringify({
       title: "更新后的公开标题",
       description: "公开说明",
-      location: "图书馆",
       takenAt: "2025-10-01",
-      tags: ["HTTP 标签"],
+      tagIds: [label.id],
     }),
   });
   assert.equal(edited.status, 200);

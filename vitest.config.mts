@@ -11,6 +11,7 @@ export default defineConfig({
       "tests/moderation/**/*.test.ts",
       "tests/public-gallery/**/*.test.ts",
       "tests/bootstrap/**/*.test.ts",
+      "tests/catalog/**/*.test.ts",
     ],
     setupFiles: ["./tests/vitest.setup.ts"],
     testTimeout: 20_000,

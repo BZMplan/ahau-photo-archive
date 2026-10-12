@@ -84,7 +84,7 @@ export default async function ReviewDetailPage({
               />
             </CardContent>
           </Card>
-          <PhotoMetadataEditor photo={photo} />
+          <PhotoMetadataEditor key={photo.id} photo={photo} />
           <section className="rounded-xl border p-5">
             <h2 className="font-medium">审核操作</h2>
             <div className="mt-4">

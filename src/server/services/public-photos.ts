@@ -14,7 +14,13 @@ import {
   sql,
 } from "drizzle-orm";
 import { getDb } from "@/server/db";
-import { photoTags, photos, submissions, tags } from "@/server/db/schema";
+import {
+  photoTags,
+  photos,
+  submissions,
+  tags,
+  locations,
+} from "@/server/db/schema";
 import { getPublicImageUrl } from "@/server/storage/urls";
 import type {
   PublicPhoto,
@@ -32,11 +38,16 @@ export type { ArchiveQuery } from "@/lib/validations/archive";
 import { cache } from "react";
 const HOMEPAGE_PAGE_SIZE = 12;
 
+// Linked names follow the managed catalog; untouched historical text remains readable.
+const locationName = sql<
+  string | null
+>`coalesce((select ${locations.name} from ${locations} where ${locations.id} = ${photos.locationId}), ${photos.location})`;
+
 const publicFields = {
   id: photos.id,
   title: photos.title,
   description: photos.description,
-  location: photos.location,
+  location: locationName,
   takenAt: photos.takenAt,
   publishedAt: photos.publishedAt,
   attribution: sql<
@@ -95,7 +106,7 @@ function archiveCondition(query: ArchiveQuery) {
   if (query.season) conditions.push(seasonCondition(query.season));
   if (query.location)
     conditions.push(
-      sql`normalize_location(${photos.location}) = normalize_location(${query.location})`,
+      sql`normalize_location(${locationName}) = normalize_location(${query.location})`,
     );
   if (query.tag)
     conditions.push(
@@ -276,17 +287,17 @@ export function getArchiveFilters() {
     .all()
     .map((row) => row.year);
   const locations = db
-    .select({ value: sql<string>`normalize_location(${photos.location})` })
+    .select({ value: sql<string>`normalize_location(${locationName})` })
     .from(photos)
     .where(
       and(
         condition,
-        isNotNull(photos.location),
-        sql`normalize_location(${photos.location}) <> ''`,
+        isNotNull(locationName),
+        sql`normalize_location(${locationName}) <> ''`,
       ),
     )
-    .groupBy(sql`normalize_location(${photos.location})`)
-    .orderBy(asc(sql`normalize_location(${photos.location})`))
+    .groupBy(sql`normalize_location(${locationName})`)
+    .orderBy(asc(sql`normalize_location(${locationName})`))
     .all()
     .map((row) => row.value)
     .filter((value): value is string => Boolean(value));
@@ -299,7 +310,7 @@ export function getRelatedPhotos(photoId: string, limit = 4): PublicPhoto[] {
   const db = getDb();
   const relatedCondition = or(
     photo.location
-      ? sql`normalize_location(${photos.location}) = normalize_location(${photo.location})`
+      ? sql`normalize_location(${locationName}) = normalize_location(${photo.location})`
       : undefined,
     photo.tagSlugs.length
       ? exists(

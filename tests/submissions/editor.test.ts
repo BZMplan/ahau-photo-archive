@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { SubmissionForm } from "../../src/components/submit/submission-form";
+import { randomUUID } from "node:crypto";
 import {
   MAX_IMAGE_BYTES,
   MAX_SUBMISSION_PHOTOS,
@@ -419,6 +420,88 @@ test.each([1, 3])(
     expect(revokeURL).toHaveBeenCalledTimes(count);
   },
 );
+test("catalog selections follow stable photo IDs through scrolling, chip removal, deletion and multipart submission", async () => {
+  const places = ["图书馆", "勤学楼"].map((name) => ({
+    id: randomUUID(),
+    name,
+    slug: randomUUID(),
+  }));
+  const labels = ["樱花", "春季", "建筑"].map((name) => ({
+    id: randomUUID(),
+    name,
+    slug: randomUUID(),
+  }));
+  let submitted: FormData | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === "/api/submissions") {
+        submitted = init?.body as FormData;
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              submissionId: randomUUID(),
+              photoCount: 1,
+              status: "pending",
+            },
+          }),
+        };
+      }
+      const url = new URL(path, "http://localhost");
+      const options = path.startsWith("/api/locations") ? places : labels;
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            items: options.filter((option) =>
+              option.name.includes(url.searchParams.get("q") ?? ""),
+            ),
+          },
+        }),
+      };
+    }),
+  );
+  async function search(field: string, query: string, option: string) {
+    await edit(field, query);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 230));
+    });
+    await click(option);
+  }
+  await fillValid(["same.png", "same.png"]);
+  await visible(0);
+  await search("locationId", "图", "图书馆");
+  await search("tagIds", "樱", "樱花");
+  await search("tagIds", "春", "春季");
+  await visible(1);
+  expect(el<HTMLInputElement>("#editor-locationId").value).toBe("");
+  expect(container.textContent).not.toContain("樱花");
+  await search("locationId", "勤", "勤学楼");
+  await search("tagIds", "建", "建筑");
+  await visible(0);
+  expect(el<HTMLInputElement>("#editor-locationId").value).toBe("图书馆");
+  expect(button("移除标签：樱花")).toBeDefined();
+  expect(button("移除标签：春季")).toBeDefined();
+  await click("移除标签：春季");
+  await visible(1);
+  expect(el<HTMLInputElement>("#editor-locationId").value).toBe("勤学楼");
+  expect(button("移除标签：建筑")).toBeDefined();
+  await click("删除当前照片");
+  await click("确认删除");
+  await submit();
+  expect(submitted).toBeDefined();
+  expect(JSON.parse(String(submitted!.get("metadata")))).toEqual([
+    {
+      title: "Photo 1",
+      description: "",
+      takenAt: "",
+      locationId: places[0].id,
+      tagIds: [labels[0].id],
+    },
+  ]);
+  expect(submitted!.getAll("files")).toHaveLength(1);
+});
 test("failure retains drafts and previews; retry keeps the request ID and blocks duplicates", async () => {
   let finish: ((value: unknown) => void) | undefined;
   const request = vi.fn<(path: string, init: RequestInit) => Promise<unknown>>(

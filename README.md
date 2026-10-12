@@ -14,6 +14,14 @@ AHAU 是 Anhui Agricultural University（安徽农业大学）的完整英文缩
 底部悬浮 Dock 集中提供年份、季节、地点、标签、排序和重置；桌面向上弹层，手机集中抽屉，地点与标签可搜索。筛选由 URL Search Params 管理，自动更新、可分享、刷新和前进后退；继续使用原有服务端分页及 `published-desc` / `published-asc` / `taken-desc` / `taken-asc` 参数。
 详情页与 Lightbox 保留大图、元数据及相关照片，并携带校验后的档案筛选返回链接。公开条件仍是 approved 且公开衍生资源完整；原图、联系方式与审核信息始终私有。详细规则与验收见 [公开影像指南](docs/gallery.md)。
 
+## 地点与标签管理
+
+管理员在 `/admin/locations`、`/admin/tags` 搜索、新增、编辑、禁用/恢复目录，并查看关联照片数量、设置排序。名称规范化且唯一；URL 标识可填写或自动生成。只提供禁用/恢复，不提供物理删除。
+
+`/submit` 保留全屏双栏与按照片 UUID 联动的编辑器：地点输入搜索单选，标签输入搜索多选并显示可移除 Chip。空输入不展开全部选项；支持中文、键盘选择、加载/空/错误与重试。搜索文字不作为地点提交。每张照片提交 `locationId` 与最多 20 个不重复 `tagIds`，后端验证存在与启用状态并在提交事务中复核。审核页复用相同选择组件。
+
+新 `0007` Migration 新增 locations、photos.location_id 和 tags 管理字段，保留历史地点文本、标签及所有关联。历史重复标签保留为禁用别名；管理员创建地点时仅关联精确规范化匹配的旧文本。Docker 与原生启动继续通过共用 Bootstrap 自动备份并迁移。详见 [目录指南](docs/catalog.md)。
+
 ## 技术栈
 
 TypeScript、pnpm 12、Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui（Radix）、next-themes；SQLite / better-sqlite3 / Drizzle；Better Auth **1.7.7**、同版本 Drizzle Adapter 和官方 `auth` CLI。R2（AWS S3 SDK）、Sharp、Cloudflare Turnstile 已接入，图片与投稿测试使用 Vitest 5；生产可用 Docker Compose 或原生 Node.js + systemd 单实例部署，由外部 HTTP/HTTPS 反向代理提供公网入口。

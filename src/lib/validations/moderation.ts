@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { catalogIdSchema, tagIdsSchema } from "@/lib/validations/catalog";
 
 const optionalText = (max: number) =>
   z
@@ -26,8 +27,8 @@ export const metadataUpdateSchema = z
         (value) => !value || value <= new Date().toISOString().slice(0, 10),
         "拍摄日期不能晚于今天。",
       ),
-    location: optionalText(100),
-    tags: z.array(z.string().trim().min(1).max(50)).max(20).default([]),
+    locationId: catalogIdSchema.nullable().optional(),
+    tagIds: tagIdsSchema.optional(),
   })
   .strict();
 

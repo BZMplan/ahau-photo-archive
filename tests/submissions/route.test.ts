@@ -54,7 +54,7 @@ async function body() {
   );
   form.set(
     "metadata",
-    JSON.stringify([{ title: "Route fixture", location: "Library" }]),
+    JSON.stringify([{ title: "Route fixture", locationId: null, tagIds: [] }]),
   );
   form.set("authorName", "Anonymous archivist");
   form.set("contactEmail", "archive@example.invalid");

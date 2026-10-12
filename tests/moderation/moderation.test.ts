@@ -21,6 +21,7 @@ import {
   type ModerationDependencies,
 } from "../../src/server/services/moderation";
 import { publicationKeys } from "../../src/server/storage/keys";
+import { CatalogService } from "../../src/server/services/catalog";
 
 let directory: string;
 let database: ReturnType<typeof openDatabase>;
@@ -202,15 +203,20 @@ test("enforces state transitions and supports hide then restore with a new publi
   ).rejects.toMatchObject({ code: "CONFLICT" });
 });
 
-test("updates normalized tags and writes metadata changes to the audit log", async () => {
+test("updates managed location and tag IDs and writes metadata changes to the audit log", async () => {
   const id = await fixture("Before");
   const service = new ModerationService(deps());
+  const catalog = new CatalogService(database.db);
+  const location = catalog.create("locations", { name: "图书馆" });
+  const labels = [" 校园夜景 ", "秋季"].map((name) =>
+    catalog.create("tags", { name }),
+  );
   service.updateMetadata(id, "admin-4", {
     title: "After",
     description: "A record",
     takenAt: "2025-10-01",
-    location: "图书馆",
-    tags: [" 校园夜景 ", "校园夜景", "秋季"],
+    locationId: location.id,
+    tagIds: labels.map((tag) => tag.id),
   });
   const detail = service.getPhoto(id);
   expect(detail.title).toBe("After");

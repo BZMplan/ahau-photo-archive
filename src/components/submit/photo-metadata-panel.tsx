@@ -1,3 +1,5 @@
+import { CatalogAutocomplete } from "@/components/catalog/catalog-autocomplete";
+import type { CatalogOption } from "@/types/catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +17,8 @@ export function PhotoMetadataPanel({
   error,
   disabled,
   onChange,
+  catalogOptions,
+  onCatalogChange,
 }: {
   item: UploadItem | undefined;
   index: number;
@@ -22,7 +26,15 @@ export function PhotoMetadataPanel({
   value: MetadataDraft;
   error: EditorError | undefined;
   disabled: boolean;
-  onChange: (field: keyof MetadataDraft, value: string) => void;
+  onChange: <K extends keyof MetadataDraft>(
+    field: K,
+    value: MetadataDraft[K],
+  ) => void;
+  catalogOptions: Record<string, CatalogOption>;
+  onCatalogChange: (
+    field: "locationId" | "tagIds",
+    options: CatalogOption[],
+  ) => void;
 }) {
   const invalid = (field: keyof MetadataDraft) =>
     error?.photoId === item?.id && error?.field === field;
@@ -95,20 +107,32 @@ export function PhotoMetadataPanel({
               onChange={(event) => onChange("takenAt", event.target.value)}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="editor-location">校园地点（选填）</Label>
-            <Input
-              id="editor-location"
-              maxLength={100}
-              value={value.location}
-              aria-invalid={invalid("location")}
-              aria-describedby={
-                invalid("location") ? "editor-error" : undefined
-              }
-              onChange={(event) => onChange("location", event.target.value)}
-              placeholder="例如：图书馆"
-            />
-          </div>
+          <CatalogAutocomplete
+            kind="locations"
+            id="editor-locationId"
+            contextKey={item.id}
+            selected={
+              value.locationId && catalogOptions[value.locationId]
+                ? [catalogOptions[value.locationId]]
+                : []
+            }
+            disabled={disabled}
+            invalid={invalid("locationId")}
+            describedBy={invalid("locationId") ? "editor-error" : undefined}
+            onChange={(options) => onCatalogChange("locationId", options)}
+          />
+          <CatalogAutocomplete
+            kind="tags"
+            id="editor-tagIds"
+            contextKey={item.id}
+            selected={value.tagIds.flatMap((id) =>
+              catalogOptions[id] ? [catalogOptions[id]] : [],
+            )}
+            disabled={disabled}
+            invalid={invalid("tagIds")}
+            describedBy={invalid("tagIds") ? "editor-error" : undefined}
+            onChange={(options) => onCatalogChange("tagIds", options)}
+          />
         </fieldset>
       )}
     </section>

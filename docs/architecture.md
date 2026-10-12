@@ -128,7 +128,7 @@ unpublish 仅删公开图，delete 清全部文件，均幂等、不改业务表
  → 确认 receipt，刷新 Next 页面缓存；失败补偿删除本次公开对象
 ```
 
-`pending → approved`、`pending → rejected`、`approved → hidden`、`hidden → approved` 是唯一开放的状态转换。每次更新都带旧状态条件；两个管理员竞争时只有一个事务返回更新行数，失败方得到 409。拒绝不写公开桶，隐藏清空公开字段但保留私有原图。标签在元数据事务中规范化、去重并写入 `tags/photo_tags`，编辑操作也生成审计日志。
+`pending → approved`、`pending → rejected`、`approved → hidden`、`hidden → approved` 是唯一开放的状态转换。每次更新都带旧状态条件；两个管理员竞争时只有一个事务返回更新行数，失败方得到 409。拒绝不写公开桶，隐藏清空公开字段但保留私有原图。目录名称在 CatalogService 中规范化并受数据库唯一约束保护。审核仅验证 locationId/tagIds 并维护 photos/photo_tags，不创建目录，编辑操作也生成审计日志。
 
 Next `revalidatePath` 只处理应用页面/数据缓存；对象删除和可选 Cloudflare URL purge 分开报告。浏览器已经缓存或下载的副本无法由应用收回。
 
@@ -137,7 +137,7 @@ Next `revalidatePath` 只处理应用页面/数据缓存；对象删除和可选
 ```text
 同源游客 /submit
  → 浏览器选择 1–5 个 File，生成 object URL，仅本地预览
- → 逐张填写标题、描述、拍摄日期、地点和批次署名
+ → 逐张填写标题、描述、拍摄日期，选择目录地点/标签和批次署名
  → 勾选版权/隐私/审核授权 + Turnstile
  → POST multipart /api/submissions
  → Origin、Content-Length、字段、文件数量/总量、Zod 重新验证
@@ -180,4 +180,10 @@ Route Handler 只做请求解析和错误映射；`SubmissionService` 负责流�
 
 ## 第六阶段公开展示
 
-首页只提供全屏开场文字和导航入口，不查询或展示照片；AHAU 是安徽农业大学不可拆分的英文缩写。`/archive` 是公开照片的主要展示入口，以无最大宽度限制的 CSS Columns 瀑布流展示直角、原始比例的摄影作品。详情、标签页复用照片组件；后台视觉不受公共主题影响。底部悬浮 Dock 的桌面 Popover 与手机 Dialog 抽屉共用一套服务端解析的 URL 筛选状态，只有弹层、搜索输入与导航 pending 状态存于客户端。筛选变化通过 router.push 更新 Search Params，服务器重新查询并重置页码；分页和详情返回链接保留条件。公开页、Metadata、筛选项与 sitemap 的照片读取统一通过 services/public-photos。SQL 分页/排序/组合筛选和白名单 DTO；标签批量关联，地点用连接注册的确定性 normalize_location 函数统一历史文本。已有索引足够，不新增 Migration。照片相关公开页 force-dynamic，首页静态；仅 React cache 请求内去重；审核 revalidatePath 覆盖档案/详情/标签/sitemap，与 Cloudflare purge 分开。next/image unoptimized 直接读取既有公开 WebP，照片保留比例且无圆角，客户端边界包括图片加载、原生 Lightbox dialog 与 Dock 的 Radix 弹层。详见 [公开影像指南](gallery.md)。
+首页只提供全屏开场文字和导航入口，不查询或展示照片；AHAU 是安徽农业大学不可拆分的英文缩写。`/archive` 是公开照片的主要展示入口，以无最大宽度限制的 CSS Columns 瀑布流展示直角、原始比例的摄影作品。详情、标签页复用照片组件；后台视觉不受公共主题影响。底部悬浮 Dock 的桌面 Popover 与手机 Dialog 抽屉共用一套服务端解析的 URL 筛选状态，只有弹层、搜索输入与导航 pending 状态存于客户端。筛选变化通过 router.push 更新 Search Params，服务器重新查询并重置页码；分页和详情返回链接保留条件。公开页、Metadata、筛选项与 sitemap 的照片读取统一通过 services/public-photos。SQL 分页/排序/组合筛选和白名单 DTO；标签批量关联，地点用连接注册的确定性 normalize_location 函数统一历史文本。公开状态条件保持不变；目录扩展由 0007 增量迁移提供。照片相关公开页 force-dynamic，首页静态；仅 React cache 请求内去重；审核 revalidatePath 覆盖档案/详情/标签/sitemap，与 Cloudflare purge 分开。next/image unoptimized 直接读取既有公开 WebP，照片保留比例且无圆角，客户端边界包括图片加载、原生 Lightbox dialog 与 Dock 的 Radix 弹层。详见 [公开影像指南](gallery.md)。
+
+## 管理目录边界
+
+`services/catalog` 负责地点/标签维护、规范化唯一名称、受限搜索/分页、使用计数和选项验证；`server/api/catalog` 统一管理员 Session/角色、精确 Origin、Zod 白名单与错误映射。公共 GET `/api/locations`、`/api/tags` 仅返回启用选项的 id/name/slug，参数化包含匹配，100 字符关键词、最多 20 条。管理员 API 不提供 DELETE。
+
+`0007` 新增 locations 和 photos.location_id，扩展既有 tags，保留 photos.location 与 photo_tags。规范化重复的历史标签保留行、slug 与全部关联，只禁用非规范候选；地点由管理员创建后精确匹配旧文本，无法匹配的历史照片保留原样。SubmissionService 在事务外上传、事务中复核目录并写 Submission/Photos/PhotoTags，失败沿用补偿。公开服务优先查关联地点名称、回退历史文本，不以目录启用状态过滤历史公开照片。完整规则见 [catalog.md](catalog.md)。

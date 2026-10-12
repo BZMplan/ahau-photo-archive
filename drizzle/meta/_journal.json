@@ -50,6 +50,13 @@
       "when": 1791732899850,
       "tag": "0006_fat_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791786987367,
+      "tag": "0007_crazy_red_ghost",
+      "breakpoints": true
     }
   ]
 }

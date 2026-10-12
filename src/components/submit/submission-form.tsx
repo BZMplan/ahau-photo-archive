@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageUploader } from "@/components/submit/image-uploader";
 import { PhotoMetadataPanel } from "@/components/submit/photo-metadata-panel";
+import type { CatalogOption } from "@/types/catalog";
 import { PhotoPreview } from "@/components/submit/photo-preview";
 import { TurnstileWidget } from "@/components/submit/turnstile-widget";
 import { useActivePhoto } from "@/hooks/use-active-photo";
@@ -39,6 +40,9 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [activePhotoId, setActivePhotoId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, MetadataDraft>>({});
+  const [catalogOptions, setCatalogOptions] = useState<
+    Record<string, CatalogOption>
+  >({});
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [author, setAuthor] = useState<AuthorDraft>({
     authorName: "",
@@ -155,7 +159,10 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
     );
     setEditorError(undefined);
   }
-  function updateMetadata(field: keyof MetadataDraft, value: string) {
+  function updateMetadata<K extends keyof MetadataDraft>(
+    field: K,
+    value: MetadataDraft[K],
+  ) {
     if (!activePhotoId) return;
     setMetadata((current) => ({
       ...current,
@@ -166,6 +173,21 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
     }));
     if (editorError?.photoId === activePhotoId && editorError.field === field)
       setEditorError(undefined);
+  }
+  function updateCatalog(
+    field: "locationId" | "tagIds",
+    options: CatalogOption[],
+  ) {
+    setCatalogOptions((current) => ({
+      ...current,
+      ...Object.fromEntries(options.map((option) => [option.id, option])),
+    }));
+    if (field === "locationId") updateMetadata(field, options[0]?.id ?? null);
+    else
+      updateMetadata(
+        field,
+        options.map((option) => option.id),
+      );
   }
   function updateAuthor<K extends keyof AuthorDraft>(
     field: K,
@@ -392,6 +414,8 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
             error={editorError}
             disabled={busy}
             onChange={updateMetadata}
+            catalogOptions={catalogOptions}
+            onCatalogChange={updateCatalog}
           />
           <section
             className="submission-author"

@@ -9,7 +9,7 @@ AHAU 是 Anhui Agricultural University（安徽农业大学）的完整缩写，
 
 图片区原生 overflow-y: auto、scroll-snap-type: y mandatory，每个稳定 UUID 的 slide 占该滚动容器完整高度，并使用 scroll-snap-align: start 与 scroll-snap-stop: always。鼠标/触控板/触摸交给浏览器，不截获 wheel。IntersectionObserver 的 root 是左侧容器，60% 可见比例避免相邻照片在中点反复切换；scrollend 以容器中心确认最终选中。上一张/下一张通过统一 scrollToPhoto 实际滚动，由相同 observer 更新当前 ID；减少动画偏好使用即时滚动。ResizeObserver 在容器高度变化时重新对齐当前照片。
 
-右侧只渲染当前照片的标题、说明、拍摄日期和地点，按 UUID 在 metadata record 中独立保存；输入元素不会因当前照片变化而重新挂载。照片列表、元数据与公共批次信息由同一 SubmissionForm 管理；署名、邮箱、备注、授权和 Turnstile 不随切换重置。匿名接口严格限制字段，暂不支持标签；沿用既有数据契约，不新增标签控件、API 或数据库列。
+右侧渲染当前照片的标题、说明、拍摄日期、地点和标签，按 UUID 在 metadata record 中独立保存；照片切换只重置搜索文字，不清空已选目录 ID。照片列表、元数据与公共批次信息由同一 SubmissionForm 管理；署名、邮箱、备注、授权和 Turnstile 不随切换重置。地点和标签来自管理员目录，地点单选、标签多选；名称展示缓存与 ID 草稿分开，提交仅包含 locationId/tagIds。空搜索不显示完整列表，输入后 180ms 防抖查询，已选标签排除并显示可移除 Chip。详见 [目录指南](catalog.md)。
 
 右侧独立 overflow-y: auto，双方 overscroll-behavior-y: contain 避免滚动传递。切换照片时信息区回到顶部，元数据仍保留。底部提交栏位于右侧滚动区域之外，保持可访问；手机使用相同数据状态和上下分区，VisualViewport 在正常缩放的手机键盘展开时调整页面高度，预览区缩小，让字段和操作栏可用。没有全局切图键盘快捷键。
 
@@ -24,7 +24,7 @@ ImageUploader 继续负责 MIME/数量/大小校验、点击选择、多文件�
 - 最多 5 张照片；单张最多 10 MiB；图片总字节最多 50 MiB。
 - multipart 请求 Content-Length 上限 52 MiB，为字段和 multipart 边界预留余量。
 - 仅接受 JPEG、PNG、WebP。Sharp 还会验证实际编码、完整解码、像素和单边上限。
-- `authorName` 1–50 字符；照片 `title` 1–100；`description` 0–1000；`location` 0–100；`message` 0–1000；邮箱最多 254 且必须是有效格式。
+- `authorName` 1–50 字符；照片 `title` 1–100；`description` 0–1000；地点为可空 UUID `locationId`；标签为最多 20 个不重复 UUID 的 `tagIds`；`message` 0–1000；邮箱最多 254 且必须是有效格式。
 - `takenAt` 是可空的合法 `YYYY-MM-DD`，不能晚于当前日期；它不会被投稿时间覆盖。
 
 请求体上限首先检查可信的 `Content-Length`，解析 `formData()` 后仍检查每个 File 和总文件字节。缺少 Content-Length 的请求不会绕过文件检查。生产部署还应在外部反向代理设置与 52 MiB 投稿请求上限兼容的 body limit，因为 Next.js 的 `formData()` 解析本身不是流式上传防火墙。
@@ -33,16 +33,16 @@ ImageUploader 继续负责 MIME/数量/大小校验、点击选择、多文件�
 
 `POST /api/submissions` 只接受 `multipart/form-data`，不需要登录：
 
-| 字段                  | 类型       | 说明                                                   |
-| --------------------- | ---------- | ------------------------------------------------------ |
-| `files`               | File × 1–5 | 顺序稳定，和 metadata 数组一一对应                     |
-| `metadata`            | JSON 数组  | 每项包含 `title`、`description`、`takenAt`、`location` |
-| `authorName`          | string     | 投稿署名，必填                                         |
-| `contactEmail`        | string     | 可选联系邮箱，不公开                                   |
-| `message`             | string     | 投稿备注，可选                                         |
-| `consentAccepted`     | `"true"`   | 必须明确勾选                                           |
-| `turnstileToken`      | string     | Cloudflare Widget 返回的短期 Token                     |
-| `submissionRequestId` | UUID       | 客户端一次提交的幂等 ID                                |
+| 字段                  | 类型       | 说明                                                               |
+| --------------------- | ---------- | ------------------------------------------------------------------ |
+| `files`               | File × 1–5 | 顺序稳定，和 metadata 数组一一对应                                 |
+| `metadata`            | JSON 数组  | 每项包含 `title`、`description`、`takenAt`、`locationId`、`tagIds` |
+| `authorName`          | string     | 投稿署名，必填                                                     |
+| `contactEmail`        | string     | 可选联系邮箱，不公开                                               |
+| `message`             | string     | 投稿备注，可选                                                     |
+| `consentAccepted`     | `"true"`   | 必须明确勾选                                                       |
+| `turnstileToken`      | string     | Cloudflare Widget 返回的短期 Token                                 |
+| `submissionRequestId` | UUID       | 客户端一次提交的幂等 ID                                            |
 
 文件的关联只依赖 `files` 的顺序和 `metadata[index]`，不依赖用户文件名。服务端 Zod 会重新验证所有文本和数组长度；客户端 HTML 的 `required`、`maxLength` 只是输入体验。
 
@@ -67,12 +67,12 @@ ImageUploader 继续负责 MIME/数量/大小校验、点击选择、多文件�
 
 Route Handler 只负责 Origin、Content-Type、请求大小、FormData 读取和错误映射；`SubmissionService` 负责业务流程：
 
-1. Zod 验证投稿者字段、授权、requestId 和按顺序的照片元数据。
+1. Zod 验证投稿者字段、授权、requestId 和按顺序的照片元数据，拒绝自由文本地点/标签、伪造或重复 ID。验证安全凭据后检查地点/标签存在且启用；失效选择返回 422 并指出第几张照片。
 2. 调用 Siteverify 验证 Turnstile 的 `success`、预期 `hostname` 和 `action=submit`。Token 过期、重复使用或验证失败都会被拒绝；网络失败返回 503。
 3. 按 HMAC 来源桶检查小时投稿次数和日照片数。
 4. 建立 `submission_operations` 的 `writing` 记录。
 5. 逐张调用 `ImageService.saveOriginal()`，保存原始编码字节到私有存储，再调用 `generatePreview()` 保存私有 WebP 预览。不会调用 `publishImage()`，不写公开 Bucket。
-6. 在短 SQLite 事务内创建 Submission 和 Photo，并把所有照片状态设为 `pending`；同时增加限流计数并标记操作 `complete`。
+6. 在短 SQLite 同步事务内再次验证目录状态，创建 Submission、Photo 和 PhotoTags，并把所有照片状态设为 `pending`；同时增加限流计数并标记操作 `complete`。上传期间禁用的选项会使事务回滚并触发对象补偿。
 7. 只有数据库事务成功才返回 `201`。
 
 对象存储和 SQLite 没有跨系统原子事务。如果中途失败，服务会删除已保存的私有原图和预览；清理失败时操作标记 `cleanup_failed` 并只记录 operationId 的安全日志。清理成功的失败操作标记为 `failed`，相同 `submissionRequestId` 可以重试。已完成的 requestId 返回原受理结果，不重复创建批次。`submission_operations` 保留对象列表，方便后续孤立文件排查。
@@ -131,3 +131,7 @@ DOM 模拟不等同于真实浏览器滚轮、触摸、Scroll Snap 或视觉验�
 - 没有配置 Playwright，未增加浏览器运行依赖。未执行真实 Turnstile/Siteverify、R2 或 CDN 验证；Widget/API 在自动化测试中使用 mock，绝不视为真实云验证通过。
 
 客户端生命周期依据 Context7 与官方 [Turnstile Widget 生命周期](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/) 和 [Next Script onReady](https://nextjs.org/docs/app/api-reference/components/script#onready)，服务端仍使用既有精确 hostname/action 校验。
+
+## 目录接入验收
+
+本次已扩展投稿契约和服务端事务；前文“前台重构验证”记录描述上一阶段。当前目录规则与完整验收步骤以 [catalog.md](catalog.md) 为准。迁移和测试均使用独立临时数据库，不写入真实照片。地点仍为选填，输入但未选择候选时提交 null；标签提交每张照片自己的 ID 数组。

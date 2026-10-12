@@ -2,7 +2,11 @@ import "server-only";
 
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "node:crypto";
+import {
+  CatalogError,
+  validateCatalogSelection,
+} from "@/server/services/catalog";
+import type { CatalogOption } from "@/types/catalog";
 import {
   metadataUpdateSchema,
   type MetadataUpdateInput,
@@ -16,6 +20,7 @@ import {
   photos,
   submissions,
   tags,
+  locations,
 } from "@/server/db/schema";
 import type { PhotoStatus } from "@/types/photo";
 import { StorageError } from "@/server/storage/errors";
@@ -46,6 +51,10 @@ export interface ModerationPhotoSummary {
   description: string | null;
   takenAt: string | null;
   location: string | null;
+  locationId: string | null;
+  locationOption: CatalogOption | null;
+  tagIds: string[];
+  tagOptions: CatalogOption[];
   status: PhotoStatus;
   submittedAt: Date;
   publishedAt: Date | null;
@@ -450,77 +459,78 @@ export class ModerationService {
       .where(eq(photos.id, photoId))
       .get();
     if (!row) throw new ModerationError("NOT_FOUND", "照片不存在。");
+    const oldTags = tx
+      .select({ id: tags.id, name: tags.name })
+      .from(photoTags)
+      .innerJoin(tags, eq(photoTags.tagId, tags.id))
+      .where(eq(photoTags.photoId, photoId))
+      .orderBy(tags.id)
+      .all();
+    const nextTagIds = values.tagIds ?? oldTags.map((tag) => tag.id);
+    const nextLocationId =
+      values.locationId === undefined
+        ? row.photo.locationId
+        : values.locationId;
+    let selection;
+    try {
+      selection = validateCatalogSelection(tx, nextLocationId, nextTagIds, {
+        locationId: row.photo.locationId,
+        tagIds: oldTags.map((tag) => tag.id),
+      });
+    } catch (error) {
+      if (error instanceof CatalogError)
+        throw new ModerationError("INVALID_INPUT", error.message);
+      throw error;
+    }
+    const nextLocation =
+      values.locationId === undefined
+        ? row.photo.location
+        : (selection.location?.name ?? null);
     const changes: Record<string, { old: string | null; new: string | null }> =
       {};
     for (const [key, next] of Object.entries({
       title: values.title,
       description: values.description,
       takenAt: values.takenAt,
-      location: values.location,
+      location: nextLocation,
+      locationId: nextLocationId,
     })) {
-      const old = String(
-        row.photo[key as "title" | "description" | "takenAt" | "location"] ??
-          "",
-      );
-      const normalizedNew = next ?? "";
-      if (old !== normalizedNew)
-        changes[key] = { old: old || null, new: normalizedNew || null };
+      const old =
+        row.photo[
+          key as "title" | "description" | "takenAt" | "location" | "locationId"
+        ] ?? null;
+      if (old !== next) changes[key] = { old, new: next };
     }
-    const normalizedTags = [
-      ...new Set(values.tags.map(normalizeTagName).filter(Boolean)),
-    ];
-    const oldTagNames = tx
-      .select({ name: tags.name })
-      .from(photoTags)
-      .innerJoin(tags, eq(photoTags.tagId, tags.id))
-      .where(eq(photoTags.photoId, photoId))
-      .all()
-      .map((tag) => tag.name);
-    if (oldTagNames.join("\u0000") !== normalizedTags.join("\u0000"))
+    if (
+      oldTags
+        .map((tag) => tag.id)
+        .sort()
+        .join(",") !== [...nextTagIds].sort().join(",")
+    ) {
       changes.tags = {
-        old: oldTagNames.join(", ") || null,
-        new: normalizedTags.join(", ") || null,
+        old: oldTags.map((tag) => tag.name).join(", ") || null,
+        new: selection.tags.map((tag) => tag.name).join(", ") || null,
       };
+      changes.tagIds = {
+        old: oldTags.map((tag) => tag.id).join(",") || null,
+        new: nextTagIds.join(",") || null,
+      };
+    }
     tx.update(photos)
       .set({
         title: values.title,
         description: values.description,
         takenAt: values.takenAt,
-        location: values.location,
+        locationId: nextLocationId,
+        location: nextLocation,
         updatedAt: now,
       })
       .where(eq(photos.id, photoId))
       .run();
-    tx.delete(photoTags).where(eq(photoTags.photoId, photoId)).run();
-    for (const name of normalizedTags) {
-      const slug = normalizeTagSlug(name);
-      const slugOwner = tx
-        .select({ name: tags.name })
-        .from(tags)
-        .where(eq(tags.slug, slug))
-        .get();
-      tx.insert(tags)
-        .values({
-          id: randomUUID(),
-          name,
-          slug:
-            slugOwner && slugOwner.name !== name
-              ? `${slug}-${randomUUID().slice(0, 8)}`
-              : slug,
-          createdAt: now,
-        })
-        .onConflictDoNothing({ target: tags.name })
-        .run();
-      const tag = tx
-        .select({ id: tags.id })
-        .from(tags)
-        .where(eq(tags.name, name))
-        .get();
-      if (tag)
-        tx.insert(photoTags)
-          .values({ photoId, tagId: tag.id })
-          .onConflictDoNothing()
-          .run();
+    if (values.tagIds !== undefined) {
+      tx.delete(photoTags).where(eq(photoTags.photoId, photoId)).run();
+      for (const tagId of nextTagIds)
+        tx.insert(photoTags).values({ photoId, tagId }).run();
     }
     tx.insert(moderationLogs)
       .values({
@@ -752,12 +762,40 @@ export class ModerationService {
     photo: typeof photos.$inferSelect,
     authorName: string,
   ): ModerationPhotoSummary {
+    const locationOption = photo.locationId
+      ? (this.dependencies.db
+          .select({
+            id: locations.id,
+            name: locations.name,
+            slug: locations.slug,
+            isActive: locations.isActive,
+          })
+          .from(locations)
+          .where(eq(locations.id, photo.locationId))
+          .get() ?? null)
+      : null;
+    const tagOptions = this.dependencies.db
+      .select({
+        id: tags.id,
+        name: tags.name,
+        slug: tags.slug,
+        isActive: tags.isActive,
+      })
+      .from(photoTags)
+      .innerJoin(tags, eq(photoTags.tagId, tags.id))
+      .where(eq(photoTags.photoId, photo.id))
+      .orderBy(tags.name, tags.id)
+      .all();
     return {
       id: photo.id,
       title: photo.title,
       description: photo.description,
       takenAt: photo.takenAt,
-      location: photo.location,
+      location: locationOption?.name ?? photo.location,
+      locationId: photo.locationId,
+      locationOption,
+      tagIds: tagOptions.map((tag) => tag.id),
+      tagOptions,
       status: photo.status,
       submittedAt: photo.submittedAt,
       publishedAt: photo.publishedAt,
@@ -769,29 +807,9 @@ export class ModerationService {
       height: photo.height,
       byteSize: photo.byteSize,
       mimeType: photo.mimeType,
-      tags: this.dependencies.db
-        .select({ name: tags.name })
-        .from(photoTags)
-        .innerJoin(tags, eq(photoTags.tagId, tags.id))
-        .where(eq(photoTags.photoId, photo.id))
-        .orderBy(tags.name)
-        .all()
-        .map((tag) => tag.name),
+      tags: tagOptions.map((tag) => tag.name),
     };
   }
-}
-
-function normalizeTagName(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-}
-
-function normalizeTagSlug(value: string): string {
-  return (
-    value
-      .replace(/\s+/g, "-")
-      .replace(/[^\p{L}\p{N}_-]/gu, "")
-      .slice(0, 80) || randomUUID()
-  );
 }
 
 function moderationErrorCode(error: unknown): string {

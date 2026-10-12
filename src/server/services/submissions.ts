@@ -1,10 +1,15 @@
 import "server-only";
+import {
+  CatalogError,
+  validateCatalogSelection,
+} from "@/server/services/catalog";
 import { randomUUID } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import type { openDatabase } from "@/server/db/connection";
 import {
   photos,
+  photoTags,
   submissionOperations,
   submissionRateLimits,
   submissions,
@@ -159,6 +164,23 @@ export class SubmissionService {
         status: "pending",
       };
 
+    for (const [index, value] of metadata.data.entries()) {
+      try {
+        validateCatalogSelection(
+          this.dependencies.db,
+          value.locationId,
+          value.tagIds,
+        );
+      } catch (error) {
+        if (error instanceof CatalogError)
+          throw new SubmissionError(
+            "INVALID_INPUT",
+            `第 ${index + 1} 张照片：${error.message}`,
+          );
+        throw error;
+      }
+    }
+
     const totalBytes = input.files.reduce(
       (total, item) => total + item.file.size,
       0,
@@ -255,7 +277,22 @@ export class SubmissionService {
           })
           .returning()
           .get();
-        for (const item of saved)
+        for (const [index, item] of saved.entries()) {
+          let selection;
+          try {
+            selection = validateCatalogSelection(
+              tx,
+              item.input.locationId,
+              item.input.tagIds,
+            );
+          } catch (error) {
+            if (error instanceof CatalogError)
+              throw new SubmissionError(
+                "INVALID_INPUT",
+                `第 ${index + 1} 张照片：${error.message}`,
+              );
+            throw error;
+          }
           tx.insert(photos)
             .values({
               id: item.photoId,
@@ -263,7 +300,8 @@ export class SubmissionService {
               title: item.input.title,
               description: item.input.description,
               takenAt: item.input.takenAt,
-              location: item.input.location,
+              locationId: selection.location?.id ?? null,
+              location: selection.location?.name ?? null,
               status: "pending",
               originalKey: item.originalKey,
               previewKey: item.previewKey,
@@ -275,6 +313,11 @@ export class SubmissionService {
               updatedAt: now,
             })
             .run();
+          for (const tag of selection.tags)
+            tx.insert(photoTags)
+              .values({ photoId: item.photoId, tagId: tag.id })
+              .run();
+        }
         tx.update(submissionOperations)
           .set({ state: "complete", updatedAt: now })
           .where(eq(submissionOperations.id, operation.id))

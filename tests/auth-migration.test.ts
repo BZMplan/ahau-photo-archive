@@ -111,6 +111,7 @@ test("additive authentication migration preserves existing business records and 
       reviewed_by: _reviewedBy,
       reviewed_at: _reviewedAt,
       rejection_reason: _rejectionReason,
+      location_id: _locationId,
       ...preservedPhoto
     } = upgradedPhoto!;
     void preview;
@@ -118,6 +119,7 @@ test("additive authentication migration preserves existing business records and 
     void _reviewedBy;
     void _reviewedAt;
     void _rejectionReason;
+    assert.equal(_locationId, null);
     assert.deepEqual(preservedPhoto, beforePhoto);
     const logs = db.select().from(moderationLogs).all();
     assert.equal(logs.length, 1);

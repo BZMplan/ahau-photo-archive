@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { catalogIdSchema, tagIdsSchema } from "@/lib/validations/catalog";
 import { MAX_SUBMISSION_PHOTOS, PHOTOS_PER_DAY } from "@/lib/submission-limits";
 
 const optionalText = (max: number) =>
@@ -37,7 +38,8 @@ export const photoMetadataSchema = z
       .optional()
       .or(z.literal(""))
       .transform((value) => value || undefined),
-    location: optionalText(100),
+    locationId: catalogIdSchema.nullable().optional().default(null),
+    tagIds: tagIdsSchema.default([]),
   })
   .strict()
   .superRefine((value, context) => {

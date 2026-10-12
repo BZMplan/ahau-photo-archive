@@ -78,7 +78,8 @@ function input(count = 1, sourceKey = randomUUID()) {
         title: `Campus view ${index + 1}`,
         description: "A generated test fixture.",
         takenAt: "2025-12-31",
-        location: "Library",
+        locationId: null,
+        tagIds: [],
       },
     })),
   };

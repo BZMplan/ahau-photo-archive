@@ -43,6 +43,8 @@ export function AdminShell({
               ["/admin", "仪表盘"],
               ["/admin/reviews", "投稿审核"],
               ["/admin/photos", "照片管理"],
+              ["/admin/locations", "地点管理"],
+              ["/admin/tags", "标签管理"],
               ["/admin/settings", "账户设置"],
             ].map(([href, label]) => (
               <Link

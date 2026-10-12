@@ -235,7 +235,8 @@ function prepareOldDatabase() {
   const journal = JSON.parse(
     readFileSync("drizzle/meta/_journal.json", "utf8"),
   );
-  journal.entries = journal.entries.slice(0, -1);
+  // Keep the fixture before 0006 even when later migrations are appended.
+  journal.entries = journal.entries.slice(0, 6);
   writeFileSync(join(folder, "meta/_journal.json"), JSON.stringify(journal));
   for (const entry of journal.entries)
     writeFileSync(
@@ -272,6 +273,11 @@ test("existing schema upgrades only after an online backup and keeps old users",
         .get(),
     ),
   ).toBeTruthy();
+  expect(
+    withDb((db) =>
+      db.prepare("SELECT 1 FROM sqlite_master WHERE name='locations'").get(),
+    ),
+  ).toBeTruthy();
 });
 
 test("failed upgrade backup leaves the old schema untouched", async () => {
@@ -284,6 +290,11 @@ test("failed upgrade backup leaves the old schema untouched", async () => {
       db
         .prepare("SELECT 1 FROM sqlite_master WHERE name='bootstrap_state'")
         .get(),
+    ),
+  ).toBeUndefined();
+  expect(
+    withDb((db) =>
+      db.prepare("SELECT 1 FROM sqlite_master WHERE name='locations'").get(),
     ),
   ).toBeUndefined();
 });

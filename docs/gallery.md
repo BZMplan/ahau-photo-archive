@@ -38,7 +38,7 @@ Dock bottom: 20px + env(safe-area-inset-bottom)，照片墙底部保留 144px + 
 
 日期沿用已有的 `YYYY-MM-DD` 日历日期，不通过时区转换生成拍摄年份。年份用 SQL 日期范围过滤，年份选项只来自有拍摄日期的公开记录；null 不属于任何年份/季节。月份通过 SQL substr 推导：3–5 春、6–8 夏、9–11 秋、12/1/2 冬。冬季仍按照片自身日历年份归档（2025 冬包含 2025 年 1、2、12 月）。
 
-地点使用统一 `normalizeLocation`：trim、所有连续空白合并成空格、toLowerCase。连接注册确定性 SQLite 函数 normalize_location，历史记录在 SQL 筛选和分组时使用相同规则，不修改用户原始地点文本；不需要迁移数据或增加 GIS。空地点不进入筛选项。
+地点显示、筛选和分组优先使用 locations 关联名称，locationId 为空时回退 photos.location 历史文本；两者统一通过 normalizeLocation（trim、连续空白合并、英文小写）与连接注册的确定性 SQLite 函数 normalize_location 查询。保留旧 URL location 文本参数与 Dock 查询契约；不按相似名称合并旧地点。目录禁用不影响历史公开显示。空地点不进入筛选项。
 
 标签参数采用数据库已有 slug，支持中文 URL 编码；SQL EXISTS 关联 photo_tags 和 tags，仍附加 approved 条件。筛选项的标签计数只包含公开照片。
 
@@ -48,7 +48,7 @@ Dock bottom: 20px + env(safe-area-inset-bottom)，照片墙底部保留 144px + 
 
 档案默认 24，最多 60；首页没有照片读取；正整数页码，SQL LIMIT/OFFSET，不读全量照片后筛选。页码超出结果范围显示空结果和返回上一页入口，不自动换成别的筛选。四种排序分别使用 publishedAt DESC/ASC、takenAt DESC/ASC；拍摄日期为 null 的记录在两种拍摄排序中均排最后。每种排序再按唯一 id 同方向排序，时间相同也稳定。并发发布会改变 OFFSET 页边界；不承诺跨多个请求的数据库快照。
 
-已有 photos_status_published_idx、photos_status_taken_idx、photos_status_location_idx、photo_tags 复合主键和 photo_tags_tag_idx，无需重复 Migration。年份范围可利用 status/takenAt 索引；规范化地点需在 approved 候选中执行函数，当前规模无需新增函数索引。sitemap 仅分批读取公开 ID，每批 1000 条；规模达到 50000 URL 前应拆分 sitemap。
+0007 新增 photos_location_id_idx 与目录 active/sort、名称唯一索引；公开查询仍复用已有 photos_status_published_idx、photos_status_taken_idx、photos_status_location_idx、photo_tags 复合主键和 photo_tags_tag_idx，无需重复 Migration。年份范围可利用 status/takenAt 索引；规范化地点需在 approved 候选中执行函数，当前规模无需新增函数索引。sitemap 仅分批读取公开 ID，每批 1000 条；规模达到 50000 URL 前应拆分 sitemap。
 
 ## 图片加载与存储
 
@@ -94,3 +94,7 @@ ImageService 已生成 600px thumbnail 与 2000px display WebP，本阶段全局
 - 本次没有修改 Schema、迁移、公开查询、认证、审核或存储服务。现有测试继续覆盖首次/重复迁移和历史库升级。
 - pnpm test:auth-flow：9 项真实 standalone HTTP 测试通过，新增公开页面、OG、sitemap 和撤回/恢复断言。
 - 浏览器工具访问本地隔离测试地址时被权限策略拒绝；未完成 1440px、1920px、768px、390px 的浏览器视觉、移动端触摸、Dock 交互/前进后退和 dialog 焦点实测；不以渲染单元测试代替视觉验收。项目没有 Playwright；未新增浏览器依赖或修改真实数据库，临时浏览器验收服务已关闭并清理。没有调用真实 R2/CDN。
+
+## 地点与标签目录接入
+
+投稿和审核只选择统一目录 ID；公开地点名称通过关联读取，历史自由文本仍可显示和筛选。标签继续批量关联 photo_tags，点击名称进入既有 /tags/[slug] 页面。地点/标签重命名反映在新请求；已引用 slug 不可修改。禁用标签不移除历史 photo_tags，公开照片仍显示该标签并可按 slug 筛选。目录公开搜索不含照片数量或审核信息；档案计数与照片查询继续共用 approved/公开资源完整条件。新实现与本次验证见 [目录指南](catalog.md)，前文验证记录属于先前阶段。

@@ -2,7 +2,7 @@
 
 ## 范围与资料
 
-校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证与自动初始化变更读 README 和 `docs/initialization.md`；Docker 部署、迁移、备份与恢复变更读 `docs/deployment.md`，原生部署变更读 `docs/deployment-native.md`；确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`。
+校园影像档案馆，单体 Next.js 项目，公开浏览、匿名投稿、管理员审核。已完成基础、认证、图片基础设施、匿名投稿和审核发布闭环。业务开发前读 `docs/architecture.md` 的权限边界；投稿变更读 `docs/submissions.md`；存储、发布、删除、恢复或 R2 配置变更时读 `docs/storage.md`；审核状态机和日志变更读 `docs/moderation.md`；认证与自动初始化变更读 README 和 `docs/initialization.md`；Docker 部署、迁移、备份与恢复变更读 `docs/deployment.md`，原生部署变更读 `docs/deployment-native.md`；确定阶段任务时读 `docs/roadmap.md`；公开页面、筛选、排序、图片组件或 SEO 变更读 `docs/gallery.md`；地点/标签目录、选择组件或关系变更读 `docs/catalog.md`。
 
 技术栈：TypeScript、pnpm、Next.js App Router、React、Tailwind CSS、shadcn/ui、SQLite、Drizzle、Better Auth、Cloudflare R2、Sharp、Cloudflare Turnstile、Docker / Docker Compose、原生 Linux systemd。版本以 lockfile 为准，保持单实例架构，增加基础设施先说明需求。
 
@@ -34,7 +34,16 @@
 
 - `/submit` 保持全屏双栏编辑器：桌面左侧约 65% 原生垂直 Scroll Snap、右侧约 35% 独立滚动信息区；手机上下布局。不得重新引入传统居中长表单。
 - 当前照片以稳定 UUID 和 IntersectionObserver 联动，导航必须同步真实滚动位置；每张元数据按 ID 保存并按文件顺序提交。不得破坏图片/字段联动或让批次公共信息随照片切换重置。
-- 图片完整显示且无圆角；添加、确认删除、卸载及成功受理时管理 Object URL 生命周期。错误须定位具体照片与字段，失败保留草稿；沿用现有 Schema、API、数量限制、授权、Turnstile 和私有 pending 流程，不扩展匿名投稿标签契约。AHAU 保持不可拆分。
+- 图片完整显示且无圆角；添加、确认删除、卸载及成功受理时管理 Object URL 生命周期。错误须定位具体照片与字段，失败保留草稿；保持数量限制、授权、Turnstile 和私有 pending 流程。AHAU 是 Anhui Agricultural University（安徽农业大学）的完整缩写，保持不可拆分。
+
+## 地点与标签目录
+
+- 地点与标签只能由管理员通过 CatalogService 创建、编辑、禁用/恢复；普通投稿者只能选择已有启用选项，不能自由创建地点或标签。
+- 地点单选、标签多选（最多 20 个），使用输入搜索自动补全；空搜索不展开全列表，不使用传统点击展开的 Select。投稿与审核复用同一数据源和键盘/ARIA 交互。
+- 每张照片按稳定 UUID 独立保存 locationId/tagIds，按文件顺序提交；搜索文字不等于已选 ID。投稿 API 必须校验 UUID、数组上限、重复 ID、选项存在及启用状态，并在最终事务中复核。
+- Submission、Photos、PhotoTags 在同一短同步事务内保存；上传在事务外，复用私有对象补偿与 operation 记录。
+- 禁用目录不能破坏历史照片；保留 photos.location 兼容文本与历史标签关联，仅精确规范化匹配可关联旧地点，不按名称相似度合并。审核允许保留已有禁用关联，不能给其他照片新增禁用关联。
+- 公开照片查询仍仅允许 approved 且衍生资源完整；地点名称优先关联目录、回退历史文本，标签复用 photo_tags，禁用选项仍可显示历史公开关系。
 
 ## API 与权限
 

@@ -37,7 +37,12 @@ test("mapping after removal uses IDs and original file order, including duplicat
   const draft = {
     a: { ...emptyMetadata(), title: "A", takenAt: "2025-01-01" },
     b: { ...emptyMetadata(), title: "B" },
-    c: { ...emptyMetadata(), title: "C", location: "Library" },
+    c: {
+      ...emptyMetadata(),
+      title: "C",
+      locationId: randomUUID(),
+      tagIds: [randomUUID()],
+    },
   };
   const form = submissionFormData([c, a], draft, author, randomUUID(), "token");
   const files = form.getAll("files") as File[];

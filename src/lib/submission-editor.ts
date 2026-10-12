@@ -12,7 +12,8 @@ export interface MetadataDraft {
   title: string;
   description: string;
   takenAt: string;
-  location: string;
+  locationId: string | null;
+  tagIds: string[];
 }
 export interface AuthorDraft {
   authorName: string;
@@ -29,7 +30,8 @@ export const emptyMetadata = (): MetadataDraft => ({
   title: "",
   description: "",
   takenAt: "",
-  location: "",
+  locationId: null,
+  tagIds: [],
 });
 
 export function nextActivePhotoId(
@@ -64,13 +66,15 @@ export function validateEditor(
       title: "标题（1–100 字符）",
       description: "说明（最多 1000 字符）",
       takenAt: "拍摄日期",
-      location: "地点（最多 100 字符）",
+      locationId: "拍摄地点",
+      tagIds: "照片标签",
     };
     if (
       field === "title" ||
       field === "description" ||
       field === "takenAt" ||
-      field === "location"
+      field === "locationId" ||
+      field === "tagIds"
     )
       return {
         photoId: items[index]?.id,
