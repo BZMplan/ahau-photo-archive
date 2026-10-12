@@ -545,7 +545,7 @@ export function SubmissionForm({ siteKey }: { siteKey: string }) {
             </div>
             <Button
               type="submit"
-              disabled={busy}
+              disabled={busy || !author.consentAccepted}
               className="min-h-11 rounded-full px-5"
             >
               {busy ? "正在提交…" : "提交全部照片"}
